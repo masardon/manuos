@@ -53,8 +53,12 @@ export async function GET(request: NextRequest) {
       id: order.id,
       orderNumber: order.orderNumber,
       customerName: order.customerName,
+      customerEmail: order.customerEmail,
+      customerPhone: order.customerPhone,
       status: order.status,
       progressPercent: order.progressPercent || 0,
+      plannedStartDate: order.plannedStartDate?.toISOString() || null,
+      plannedEndDate: order.plannedEndDate?.toISOString() || null,
       createdAt: order.createdAt.toISOString(),
       manufacturingOrdersCount: order.manufacturingOrders.length,
       manufacturingOrders: order.manufacturingOrders.map((mo) => ({

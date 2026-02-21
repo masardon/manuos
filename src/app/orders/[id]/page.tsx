@@ -1,0 +1,407 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter, useParams } from 'next/navigation'
+import { AppLayout } from '@/components/layout/app-layout'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import { Separator } from '@/components/ui/separator'
+import { useToast } from '@/hooks/use-toast'
+import {
+  ArrowLeft,
+  FileText,
+  Wrench,
+  User,
+  Clock,
+  Calendar,
+  CheckCircle,
+  RefreshCw,
+  Kanban,
+  Store,
+  Plus,
+} from 'lucide-react'
+import { ScrollArea } from '@/components/ui/scroll-area'
+
+interface ManufacturingOrder {
+  id: string
+  moNumber: string
+  name: string
+  description: string | null
+  status: string
+  progressPercent: number
+  plannedStartDate: string
+  plannedEndDate: string
+  jobsheetsCount: number
+}
+
+interface Order {
+  id: string
+  orderNumber: string
+  customerName: string
+  customerEmail: string
+  customerPhone: string
+  description: string | null
+  status: string
+  progressPercent: number
+  plannedStartDate: string
+  plannedEndDate: string
+  actualStartDate: string | null
+  actualEndDate: string | null
+  manufacturingOrders: ManufacturingOrder[]
+}
+
+export default function OrderDetailPage() {
+  const router = useRouter()
+  const params = useParams()
+  const { toast } = useToast()
+  const [loading, setLoading] = useState(true)
+  const [order, setOrder] = useState<Order | null>(null)
+
+  useEffect(() => {
+    fetchOrder()
+  }, [params.id])
+
+  const fetchOrder = async () => {
+    try {
+      const response = await fetch(`/api/orders/${params.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        setOrder(data.order)
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'Order not found',
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching order:', error)
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to load order details',
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const getStatusBadge = (status: string) => {
+    const config: Record<string, string> = {
+      DRAFT: 'bg-gray-100 text-gray-800',
+      PLANNING: 'bg-blue-100 text-blue-800',
+      MATERIAL_PREPARATION: 'bg-indigo-100 text-indigo-800',
+      IN_PRODUCTION: 'bg-orange-100 text-orange-800',
+      COMPLETED: 'bg-green-100 text-green-800',
+      DELIVERED: 'bg-purple-100 text-purple-800',
+      CANCELLED: 'bg-red-100 text-red-800',
+    }
+    return <Badge className={config[status] || 'bg-gray-100 text-gray-800'}>{status.replace(/_/g, ' ')}</Badge>
+  }
+
+  const getMOStatusColor = (status: string) => {
+    if (status === 'COMPLETED') return 'bg-green-500'
+    if (status === 'IN_PROGRESS') return 'bg-emerald-500'
+    if (status === 'PLANNED') return 'bg-blue-500'
+    return 'bg-slate-400'
+  }
+
+  const formatDateTime = (dateTimeString: string | null) => {
+    if (!dateTimeString) return '-'
+    return new Date(dateTimeString).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    })
+  }
+
+  // Get actual start date from earliest MO start
+  const getActualStartDate = () => {
+    if (!order) return null
+    
+    const mosWithStart = order.manufacturingOrders.filter(mo => mo.plannedStartDate)
+    if (mosWithStart.length === 0) return null
+    
+    const earliest = mosWithStart.reduce((earliest, current) => {
+      return new Date(current.plannedStartDate) < new Date(earliest.plannedStartDate) ? current : earliest
+    })
+    
+    return earliest.plannedStartDate
+  }
+
+  // Get actual end date - only if ALL MOs are completed
+  const getActualEndDate = () => {
+    if (!order) return null
+    
+    const allCompleted = order.manufacturingOrders.every(mo => mo.status === 'COMPLETED')
+    if (!allCompleted) return null
+    
+    const mosWithEnd = order.manufacturingOrders.filter(mo => mo.plannedEndDate)
+    if (mosWithEnd.length === 0) return null
+    
+    const latest = mosWithEnd.reduce((latest, current) => {
+      return new Date(current.plannedEndDate) > new Date(latest.plannedEndDate) ? current : latest
+    })
+    
+    return latest.plannedEndDate
+  }
+
+  if (loading) {
+    return (
+      <AppLayout title="Order Details">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="text-muted-foreground mt-4">Loading order details...</p>
+          </div>
+        </div>
+      </AppLayout>
+    )
+  }
+
+  if (!order) {
+    return (
+      <AppLayout title="Order Not Found">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <p className="text-muted-foreground mb-4">Order not found</p>
+            <Button onClick={() => router.push('/orders')}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Orders
+            </Button>
+          </div>
+        </div>
+      </AppLayout>
+    )
+  }
+
+  return (
+    <AppLayout title="Order Details">
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button variant="outline" size="icon" onClick={() => router.push('/orders')}>
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Badge variant="outline">{order.orderNumber}</Badge>
+                {getStatusBadge(order.status)}
+              </div>
+              <h1 className="text-3xl font-bold">{order.customerName}</h1>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Shortcuts */}
+            <Button variant="outline" size="sm" onClick={() => router.push('/planning/kanban')}>
+              <Kanban className="h-4 w-4 mr-2" />
+              Kanban
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => router.push('/shop-floor')}>
+              <Store className="h-4 w-4 mr-2" />
+              Shop Floor
+            </Button>
+            <Separator orientation="vertical" className="h-6" />
+            <Button variant="outline" onClick={fetchOrder} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button onClick={() => router.push('/orders/new')}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Order
+            </Button>
+          </div>
+        </div>
+
+        {/* Progress Overview */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Progress Overview</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Overall Progress</span>
+                <span className="text-lg font-bold">{order.progressPercent}%</span>
+              </div>
+              <Progress value={order.progressPercent} className="h-3" />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                <div>
+                  <div className="text-xs text-muted-foreground">Status</div>
+                  <div className="font-medium">{order.status.replace(/_/g, ' ')}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">MOs</div>
+                  <div className="font-medium">{order.manufacturingOrders.length} total</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Completed</div>
+                  <div className="font-medium">{order.manufacturingOrders.filter(mo => mo.status === 'COMPLETED').length}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">In Progress</div>
+                  <div className="font-medium">{order.manufacturingOrders.filter(mo => mo.status === 'IN_PROGRESS').length}</div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Customer Information */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Customer Information</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <div className="text-xs text-muted-foreground">Customer Name</div>
+                <div className="font-medium">{order.customerName}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Email</div>
+                <div className="font-medium">{order.customerEmail || '-'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Phone</div>
+                <div className="font-medium">{order.customerPhone || '-'}</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Timeline */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Timeline</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  Planned Start
+                </div>
+                <div className="font-medium mt-1">{formatDateTime(order.plannedStartDate)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  Planned End
+                </div>
+                <div className="font-medium mt-1">{formatDateTime(order.plannedEndDate)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  Actual Start
+                </div>
+                <div className="font-medium mt-1">{formatDateTime(getActualStartDate())}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                  <CheckCircle className="h-3 w-3" />
+                  Actual End
+                </div>
+                <div className="font-medium mt-1">{formatDateTime(getActualEndDate())}</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Manufacturing Orders List */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Manufacturing Orders</CardTitle>
+              <Badge variant="secondary">{order.manufacturingOrders.length} MOs</Badge>
+            </div>
+            <CardDescription>Production batches and jobsheets</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {order.manufacturingOrders.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No manufacturing orders for this order</p>
+              </div>
+            ) : (
+              <ScrollArea className="h-[600px]">
+                <div className="space-y-4">
+                  {order.manufacturingOrders.map((mo) => (
+                    <div key={mo.id} className="border rounded-lg p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">{mo.moNumber}</Badge>
+                          <span className="font-semibold">{mo.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => router.push(`/mo/${mo.id}`)}
+                            title="View MO Details"
+                          >
+                            <FileText className="h-4 w-4" />
+                          </Button>
+                          <div className={`w-2 h-2 rounded-full ${getMOStatusColor(mo.status)}`} />
+                          <Badge variant="outline">{mo.status.replace(/_/g, ' ')}</Badge>
+                        </div>
+                      </div>
+
+                      {mo.description && (
+                        <p className="text-sm text-muted-foreground mb-3">{mo.description}</p>
+                      )}
+
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
+                        <div>
+                          <div className="text-xs text-muted-foreground">Jobsheets</div>
+                          <div className="font-medium text-sm">{mo.jobsheetsCount}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Progress</div>
+                          <div className="font-medium text-sm">{mo.progressPercent}%</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Status</div>
+                          <div className="font-medium text-sm">{mo.status.replace(/_/g, ' ')}</div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Progress</span>
+                          <span className="font-semibold">{mo.progressPercent}%</span>
+                        </div>
+                        <Progress value={mo.progressPercent} className="h-2" />
+                      </div>
+
+                      <div className="mt-3 pt-3 border-t">
+                        <div className="grid grid-cols-2 gap-3 text-xs">
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <Calendar className="h-3 w-3" />
+                            Start: {formatDateTime(mo.plannedStartDate)}
+                          </div>
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <Calendar className="h-3 w-3" />
+                            End: {formatDateTime(mo.plannedEndDate)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </AppLayout>
+  )
+}

@@ -1,0 +1,175 @@
+
+--- Page 1 ---
+JOB SHEET - No. JS102600595  (Page 1  of 3 )
+Project
+P10260314
+Final Product
+BLOW PLATE COREBOX 
+DR 604A ECI
+Mfg. Order
+MO102600203
+Final Part No
+Date
+12/02/2026
+Required Date
+26/02/2026
+Job Name
+P1
+Product
+BLOW PLATE COREBOX 
+DR 604A ECI
+Qty Todo
+1
+ 
+Pcs
+Part No
+PREPARED
+CHECKED
+APPROVED
+FINAL JUDGE
+By:
+By:
+By:
+By:
+Date:
+Date:
+Date:
+Date:
+F-PPC-01.04/A/5/13-07-2016
+1
+CAM
+: 
+CAM
+MT102601833
+Plan
+Actual
+Operator
+Mach.
+CAM
+Date
+18/02/2026
+Remark
+Minute
+360
+
+
+--- Page 2 ---
+JOB SHEET - No. 
+JS102600595
+ (Page 
+2
+ of 
+3
+)
+Project
+P10260314
+Final Product
+BLOW PLATE COREBOX 
+DR 604A ECI
+Mfg. Order
+MO102600203
+Final Part No
+Date
+12/02/2026
+Required Date
+26/02/2026
+Job Name
+P1
+Product
+BLOW PLATE COREBOX 
+DR 604A ECI
+Qty Todo
+1
+ 
+Pcs
+Part No
+PREPARED
+CHECKED
+APPROVED
+FINAL JUDGE
+By:
+By:
+By:
+By:
+Date:
+Date:
+Date:
+Date:
+F-PPC-01.04/A/5/13-07-2016
+2
+Machining
+: 
+CNC MILL
+MT102601834
+Plan
+Actual
+Operator
+Mach.
+PRIMINER (3 AXIS CNC
+MILL)
+Date
+18/02/2026
+Remark
+Minute
+480
+
+
+--- Page 3 ---
+JOB SHEET - No. 
+JS102600595
+ (Page 
+3
+ of 
+3
+)
+Project
+P10260314
+Final Product
+BLOW PLATE COREBOX 
+DR 604A ECI
+Mfg. Order
+MO102600203
+Final Part No
+Date
+12/02/2026
+Required Date
+26/02/2026
+Job Name
+P1
+Product
+BLOW PLATE COREBOX 
+DR 604A ECI
+Qty Todo
+1
+ 
+Pcs
+Part No
+PREPARED
+CHECKED
+APPROVED
+FINAL JUDGE
+By:
+By:
+By:
+By:
+Date:
+Date:
+Date:
+Date:
+F-PPC-01.04/A/5/13-07-2016
+3
+QC
+: 
+QC
+MT102601835
+Plan
+Actual
+Operator
+Mach.
+QUALITY_CONTROL
+Date
+18/02/2026
+Remark
+Minute
+30
+

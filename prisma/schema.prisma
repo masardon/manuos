@@ -1,0 +1,555 @@
+// Manufacturing Orchestrator Platform - Complete Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// TENANCY & ORGANIZATION HIERARCHY
+// ============================================
+
+model Tenant {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([slug])
+}
+
+model BusinessUnit {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  code      String
+  location  String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+model Board {
+  id            String   @id @default(cuid())
+  tenantId      String
+  businessUnitId String
+  name          String
+  code          String
+  description   String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([tenantId, businessUnitId, code])
+  @@index([tenantId])
+  @@index([businessUnitId])
+}
+
+// ============================================
+// CORE MANUFACTURING HIERARCHY
+// ============================================
+
+model Order {
+  id                String   @id @default(cuid())
+  tenantId          String
+  boardId           String
+  orderNumber       String   // Global Anchor - issued by Marketing
+  
+  // Customer Information
+  customerName      String
+  customerEmail     String?
+  customerPhone     String?
+  
+  // Status & Timeline
+  status            OrderStatus @default(DRAFT)
+  plannedStartDate  DateTime?
+  plannedEndDate    DateTime?
+  actualStartDate   DateTime?
+  actualEndDate     DateTime?
+  
+  // Progress
+  progressPercent   Float    @default(0)
+  
+  // Metadata
+  drawingUrl        String?
+  notes             String?
+  createdBy         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  manufacturingOrders ManufacturingOrder[]
+
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId])
+  @@index([boardId])
+  @@index([status])
+}
+
+model ManufacturingOrder {
+  id          String   @id @default(cuid())
+  tenantId    String
+  orderId     String
+  moNumber    String   // MO-01, MO-02, etc.
+  name        String
+  description String?
+  type        MOType   @default(MAIN)
+  
+  // Status & Timeline
+  status      MOStatus @default(PLANNED)
+  plannedStartDate DateTime?
+  plannedEndDate   DateTime?
+  actualStartDate  DateTime?
+  actualEndDate    DateTime?
+  
+  // Progress
+  progressPercent Float @default(0)
+  
+  // Metadata
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  jobsheets   Jobsheet[]
+  order       Order @relation(fields: [orderId], references: [id])
+
+  @@unique([tenantId, orderId, moNumber])
+  @@index([tenantId])
+  @@index([orderId])
+  @@index([status])
+}
+
+model Jobsheet {
+  id          String   @id @default(cuid())
+  tenantId    String
+  moId        String
+  jsNumber    String   // Jobsheet number
+  name        String
+  description String?
+  type        JobsheetType @default(SINGLE_PART)
+  
+  // Approval Flow
+  preparedBy  String?
+  checkedBy   String?
+  approvedBy  String?
+  
+  // Status
+  status      JobsheetStatus @default(PREPARING)
+  
+  // Dependencies
+  dependsOn   String?  // ID of jobsheet this depends on (for serial dependency)
+  
+  // Timeline
+  plannedStartDate DateTime?
+  plannedEndDate   DateTime?
+  actualStartDate  DateTime?
+  actualEndDate    DateTime?
+  
+  // Progress
+  progressPercent Float @default(0)
+  
+  // Metadata
+  drawingUrl  String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  manufacturingOrder ManufacturingOrder @relation(fields: [moId], references: [id])
+  machiningTasks     MachiningTask[]
+
+  @@unique([tenantId, moId, jsNumber])
+  @@index([tenantId])
+  @@index([moId])
+  @@index([status])
+  @@index([dependsOn])
+}
+
+model MachiningTask {
+  id          String   @id @default(cuid())
+  tenantId    String
+  jobsheetId  String
+  taskNumber  String   // Task number within jobsheet
+  name        String
+  description String?
+  
+  // Machine Assignment
+  machineId   String?
+  
+  // Status
+  status      TaskStatus @default(PENDING)
+  
+  // Timing
+  plannedHours Float?
+  actualHours   Float?
+  clockedInAt   DateTime?
+  clockedOutAt  DateTime?
+  
+  // Breakdown
+  breakdownAt   DateTime?
+  breakdownNote String?
+  resolvedAt    DateTime?
+  
+  // Technician
+  assignedTo   String?
+  
+  // Progress
+  progressPercent Float @default(0)
+  
+  // Dependencies
+  dependsOn   String?  // ID of task this depends on
+  
+  // Metadata
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  machine     Machine? @relation(fields: [machineId], references: [id])
+  jobsheet    Jobsheet @relation(fields: [jobsheetId], references: [id])
+  assignedUser     User? @relation(fields: [assignedTo], references: [id])
+
+  @@unique([tenantId, jobsheetId, taskNumber])
+  @@index([tenantId])
+  @@index([jobsheetId])
+  @@index([machineId])
+  @@index([status])
+  @@index([assignedTo])
+  @@index([dependsOn])
+}
+
+// ============================================
+// MACHINE MANAGEMENT
+// ============================================
+
+model Machine {
+  id          String   @id @default(cuid())
+  tenantId    String
+  code        String
+  name        String
+  model       String?
+  location    String?
+  type        String?  // e.g., CNC, Lathe, Milling
+
+  // Status (derived from tasks)
+  status      MachineStatus @default(IDLE)
+
+  // Capabilities
+  capacity    Float?   // hours per day
+
+  // Maintenance
+  lastMaintenanceAt DateTime?
+  nextMaintenanceAt DateTime?
+
+  // Metadata
+  notes       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  machiningTasks MachiningTask[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([status])
+}
+
+model Breakdown {
+  id          String   @id @default(cuid())
+  tenantId    String
+  machineId   String
+  
+  // Breakdown Info
+  reportedBy  String   // User who reported
+  reportedAt  DateTime @default(now())
+  type        BreakdownType @default(MECHANICAL)
+  description String
+  notes       String?
+  
+  // Resolution
+  resolved    Boolean  @default(false)
+  resolvedAt  DateTime?
+  resolvedBy  String? // User who resolved
+  resolution  String?
+  
+  // Impact
+  affectedTaskId  String? // Task that was affected
+  
+  // Metadata
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([machineId])
+  @@index([resolved])
+  @@index([reportedAt])
+}
+
+// ============================================
+// INVENTORY & MATERIAL TRACKING
+// ============================================
+
+model Inventory {
+  id          String   @id @default(cuid())
+  tenantId    String
+  partNumber  String
+  name        String
+  description String?
+  category    String?
+  batch       String?  // Batch/lot number
+  
+  // Quantity
+  quantity    Float    @default(0)
+  unit        String?  // e.g., pcs, kg, m
+  
+  // Location
+  location    String?  // Warehouse location
+  shelf       String?
+  
+  // Status
+  status      MaterialStatus @default(AVAILABLE)
+  
+  // Supplier Info
+  supplier    String?
+  supplierRef String?
+  
+  // Dates
+  receivedAt  DateTime?
+  expiryDate  DateTime?
+  
+  // Metadata
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, partNumber, batch])
+  @@index([tenantId])
+  @@index([status])
+}
+
+model InventoryLog {
+  id          String   @id @default(cuid())
+  tenantId    String
+  inventoryId String
+  orderId     String?  // Reference to order for reservation
+  
+  type        LogType
+  quantity    Float    // Positive for IN, negative for OUT
+  balance     Float    // Balance after transaction
+  
+  // Reference
+  reference   String?  // e.g., PO number, MO number, Assembly ID
+  
+  // Metadata
+  notes       String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([inventoryId])
+  @@index([orderId])
+  @@index([createdAt])
+}
+
+// ============================================
+// USER & ROLE MANAGEMENT
+// ============================================
+
+model User {
+  id        String   @id @default(cuid())
+  tenantId  String
+  email     String
+  name      String?
+  phone     String?
+
+  // Role
+  roleId    String
+  role      Role     @relation(fields: [roleId], references: [id])
+
+  // Authentication
+  passwordHash String
+
+  // Status
+  isActive  Boolean  @default(true)
+
+  // Metadata
+  avatarUrl String?
+  employeeId String?
+
+  // Metadata
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  assignedTasks MachiningTask[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([email])
+  @@index([roleId])
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   // Super Admin, Admin, PPIC, Manager, Technician, Warehouse, Customer
+  code        String   @unique // ROLE_SUPER_ADMIN, ROLE_ADMIN, etc.
+  description String?
+  isSystem    Boolean  @default(false) // System roles cannot be deleted
+
+  // Relations
+  users       User[]
+
+  // Metadata
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([code])
+}
+
+// ============================================
+// USER & SYSTEM SETTINGS
+// ============================================
+
+model UserSettings {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+
+  // UI Preferences
+  theme         String   @default("light") // light, dark, system
+  language      String   @default("en")
+  timezone      String   @default("UTC")
+
+  // Notification Settings
+  emailNotifications   Boolean @default(true)
+  taskReminders       Boolean @default(true)
+  breakdownAlerts     Boolean @default(true)
+  inventoryAlerts     Boolean @default(true)
+
+  // Dashboard Preferences
+  defaultView   String   @default("dashboard")
+  showInactiveMachines Boolean @default(false)
+  showCompletedTasks Boolean @default(false)
+
+  // Table Settings
+  rowsPerPage   Int      @default(25)
+
+  // Metadata
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model SystemSettings {
+  id            String   @id @default(cuid())
+  key           String   @unique
+  category      String   // General, Security, Notifications, etc.
+  value         String
+  description   String?
+  type          String   @default("string") // string, number, boolean, json
+  isPublic      Boolean  @default(false) // Can be accessed by non-admin users
+
+  // Metadata
+  updatedAt     DateTime @updatedAt
+
+  @@index([category])
+  @@index([key])
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum OrderStatus {
+  DRAFT
+  PLANNING
+  MATERIAL_PREPARATION
+  IN_PRODUCTION
+  ASSEMBLY
+  QC
+  READY_FOR_DELIVERY
+  DELIVERED
+  CLOSED
+  CANCELLED
+}
+
+enum MOType {
+  MAIN
+  SPARE_PART
+  REWORK
+}
+
+enum MOStatus {
+  PLANNED
+  SCHEDULED
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum JobsheetType {
+  SINGLE_PART
+  ASSEMBLY
+  QC_TEST
+}
+
+enum JobsheetStatus {
+  PREPARING
+  READY
+  IN_PROGRESS
+  REVIEW
+  APPROVED
+  COMPLETED
+  REJECTED
+}
+
+enum TaskStatus {
+  PENDING
+  ASSIGNED
+  RUNNING
+  PAUSED
+  COMPLETED
+  CANCELLED
+  ON_HOLD
+}
+
+enum MachineStatus {
+  IDLE
+  BUSY
+  DOWN
+  MAINTENANCE
+}
+
+enum MaterialStatus {
+  AVAILABLE
+  RESERVED
+  WIP
+  USED
+  EXPIRED
+}
+
+enum LogType {
+  IN
+  OUT
+  RESERVATION
+  ADJUSTMENT
+}
+
+enum BreakdownType {
+  MECHANICAL
+  ELECTRICAL
+  MAINTENANCE
+  OTHER
+}

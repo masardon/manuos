@@ -19,6 +19,7 @@ import {
   Maximize2,
   X,
   CheckCircle,
+  Menu,
 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -27,6 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { useSidebar } from '@/components/ui/sidebar'
 
 interface Task {
   id: string
@@ -186,12 +188,38 @@ export default function ShopFloorPage() {
     return task.clockedInAt && !task.clockedOutAt && (task.status === 'RUNNING' || task.status === 'PAUSED')
   }
 
+  // Mobile menu toggle component
+  const MobileMenuToggle = () => {
+    const { toggleSidebar } = useSidebar()
+    
+    return (
+      <Button
+        variant="ghost"
+        size="icon"
+        className="text-primary-foreground hover:bg-primary-foreground/20"
+        onClick={toggleSidebar}
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
+    )
+  }
+
   return (
     <AppLayout title="Shop Floor">
       <div className="flex flex-col h-screen overflow-hidden">
         {/* Live Clock Header */}
-        <Card className="shrink-0 bg-primary text-primary-foreground border-0 shadow-md">
+        <Card className="shrink-0 bg-primary text-primary-foreground border-0 shadow-md relative">
           <CardContent className="pt-4 pb-4 text-center">
+            {/* Mobile Menu Button */}
+            <div className="md:hidden absolute left-4 top-1/2 -translate-y-1/2 z-50">
+              <MobileMenuToggle />
+            </div>
+            
+            {/* Desktop Menu Button (always visible for easy access) */}
+            <div className="hidden md:block absolute left-4 top-1/2 -translate-y-1/2 z-50">
+              <MobileMenuToggle />
+            </div>
+            
             <div className="flex items-center justify-center gap-2 mb-1">
               <Clock className="h-4 w-4 animate-pulse" />
               <span className="text-xs font-medium opacity-90">Current Time</span>

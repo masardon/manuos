@@ -612,20 +612,27 @@ export default function JobsheetDetailPage() {
                       {task.status !== 'COMPLETED' && (
                         <div className="mt-3">
                           <Button
-                            className="w-full h-12"
-                            variant={task.clockedInAt && !task.clockedOutAt ? 'destructive' : 'default'}
+                            className={`w-full h-12 ${
+                              task.clockedInAt && !task.clockedOutAt && task.status !== 'PAUSED'
+                                ? 'bg-red-600 hover:bg-red-700'      // Clock Out - Red
+                                : task.status === 'PAUSED'
+                                  ? 'bg-blue-600 hover:bg-blue-700'  // Resume - Blue
+                                  : 'bg-emerald-600 hover:bg-emerald-700'  // Clock In - Green
+                            }`}
                             onClick={() => router.push('/shop-floor')}
                           >
                             {task.clockedInAt && !task.clockedOutAt ? (
-                              <>
-                                <Square className="h-5 w-5 mr-2" />
-                                Clock Out
-                              </>
-                            ) : task.status === 'PAUSED' ? (
-                              <>
-                                <Play className="h-5 w-5 mr-2" />
-                                Resume
-                              </>
+                              task.status === 'PAUSED' ? (
+                                <>
+                                  <Play className="h-5 w-5 mr-2" />
+                                  Resume
+                                </>
+                              ) : (
+                                <>
+                                  <Square className="h-5 w-5 mr-2" />
+                                  Clock Out
+                                </>
+                              )
                             ) : (
                               <>
                                 <Play className="h-5 w-5 mr-2" />

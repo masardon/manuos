@@ -115,18 +115,17 @@ export async function GET(request: NextRequest) {
 
           // Add task-level items
           js.machiningTasks.forEach((task) => {
-            if (task.plannedHours && task.clockedInAt) {
-              const startTime = new Date(task.clockedInAt)
-              // Estimate end time based on planned hours
-              const estimatedEnd = new Date(startTime.getTime() + (task.plannedHours * 60 * 60 * 1000))
-
+            const startTime = task.clockedInAt || task.plannedStartDate || js.plannedStartDate
+            const endTime = task.clockedOutAt || task.plannedEndDate || js.plannedEndDate
+            
+            if (startTime && endTime) {
               ganttTasks.push({
                 id: `task-${task.id}`,
                 name: `${task.taskNumber} - ${task.name}`,
                 orderNumber: order.orderNumber,
                 customerName: order.customerName,
-                startDate: startTime,
-                endDate: task.clockedOutAt ? new Date(task.clockedOutAt) : estimatedEnd,
+                startDate: new Date(startTime),
+                endDate: new Date(endTime),
                 progressPercent: task.progressPercent || 0,
                 status: task.status,
                 type: 'task',

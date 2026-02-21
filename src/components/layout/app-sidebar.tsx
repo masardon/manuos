@@ -58,6 +58,20 @@ const navigationGroups = [
         roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_SUPER_ADMIN'],
       },
       {
+        id: 'mo',
+        name: 'Manufacturing Orders',
+        href: '/mo',
+        icon: Wrench,
+        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_SUPER_ADMIN'],
+      },
+      {
+        id: 'jobsheets',
+        name: 'Jobsheets',
+        href: '/jobsheets',
+        icon: Package,
+        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_SUPER_ADMIN'],
+      },
+      {
         id: 'planning',
         name: 'Planning',
         href: '/planning',

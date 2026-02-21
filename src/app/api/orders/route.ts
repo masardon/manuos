@@ -6,9 +6,9 @@ import { OrderStatus } from '@prisma/client'
 export async function GET(request: NextRequest) {
   try {
     const user = requireAuth(request.headers)
-    
+
     // Get tenant ID
-    const tenantId = user?.tenantId || 'tenant_default'
+    const tenantId = user?.tenantId || 'tenant_ypti'
 
     // Get all orders
     const orders = await db.order.findMany({
@@ -53,6 +53,69 @@ export async function GET(request: NextRequest) {
     console.error('Error fetching orders:', error)
     return NextResponse.json(
       { error: 'Failed to fetch orders' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const {
+      orderNumber,
+      customerName,
+      customerEmail,
+      customerPhone,
+      description,
+      notes,
+      plannedStartDate,
+      plannedEndDate,
+      drawingUrl,
+      drawings,
+    } = body
+
+    if (!orderNumber || !customerName || !plannedStartDate || !plannedEndDate) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      )
+    }
+
+    const tenantId = 'tenant_ypti' // Default tenant for demo
+    const boardId = 'board_main' // Default board
+
+    // Create the order with DRAFT status
+    const order = await db.order.create({
+      data: {
+        tenantId,
+        boardId,
+        orderNumber,
+        customerName,
+        customerEmail,
+        customerPhone,
+        description,
+        notes,
+        drawingUrl: drawings?.[0] || drawingUrl,
+        status: OrderStatus.DRAFT,
+        plannedStartDate: new Date(plannedStartDate),
+        plannedEndDate: new Date(plannedEndDate),
+        progressPercent: 0,
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      order: {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+      },
+      message: 'Order created successfully. Pending engineering review.',
+    })
+  } catch (error) {
+    console.error('Error creating order:', error)
+    return NextResponse.json(
+      { error: 'Failed to create order' },
       { status: 500 }
     )
   }

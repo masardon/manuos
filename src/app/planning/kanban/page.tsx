@@ -309,7 +309,7 @@ export default function KanbanPage() {
       {/* Task Header */}
       <div className="flex items-start justify-between mb-3">
         <Link
-          href={`/tasks/${task.id}`}
+          href={`/mt/${task.id}`}
           className="text-sm font-semibold text-foreground hover:text-primary transition-colors flex-1"
         >
           {task.taskNumber}
@@ -322,7 +322,7 @@ export default function KanbanPage() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem asChild>
-              <Link href={`/tasks/${task.id}`}>
+              <Link href={`/mt/${task.id}`}>
                 <Wrench className="mr-2 h-4 w-4" />
                 View Details
               </Link>

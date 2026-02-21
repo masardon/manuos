@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { AppLayout } from '@/components/layout/app-layout'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useToast } from '@/hooks/use-toast'
 import {
   Clock,
@@ -29,6 +31,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useSidebar } from '@/components/ui/sidebar'
+import { useAuthStore } from '@/stores/auth-store'
 
 interface Task {
   id: string
@@ -72,7 +75,9 @@ interface Task {
 }
 
 export default function ShopFloorPage() {
+  const router = useRouter()
   const { toast } = useToast()
+  const { user } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
@@ -204,20 +209,46 @@ export default function ShopFloorPage() {
     )
   }
 
+  // User profile button component
+  const UserProfileButton = () => {
+    if (!user) return null
+    
+    const initials = (user.name || user.email).charAt(0).toUpperCase()
+    
+    return (
+      <Button
+        variant="ghost"
+        className="text-primary-foreground hover:bg-primary-foreground/20 gap-2 px-2 h-auto py-1"
+        onClick={() => router.push('/profile')}
+        title={`${user.name || user.email}\n${user.role}`}
+      >
+        <Avatar className="h-8 w-8 border-2 border-primary-foreground/50">
+          <AvatarImage src={user.avatarUrl || undefined} />
+          <AvatarFallback className="bg-primary-foreground/20 text-primary-foreground font-semibold text-sm">
+            {initials}
+          </AvatarFallback>
+        </Avatar>
+        <span className="hidden md:inline text-sm font-medium max-w-[150px] truncate text-left">
+          {user.name || user.email}
+        </span>
+      </Button>
+    )
+  }
+
   return (
     <AppLayout title="Shop Floor">
       <div className="flex flex-col h-screen overflow-hidden">
         {/* Live Clock Header */}
         <Card className="shrink-0 bg-primary text-primary-foreground border-0 shadow-md relative">
           <CardContent className="pt-4 pb-4 text-center">
-            {/* Mobile Menu Button */}
-            <div className="md:hidden absolute left-4 top-1/2 -translate-y-1/2 z-50">
+            {/* Mobile Menu Button - Left */}
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 z-50">
               <MobileMenuToggle />
             </div>
             
-            {/* Desktop Menu Button (always visible for easy access) */}
-            <div className="hidden md:block absolute left-4 top-1/2 -translate-y-1/2 z-50">
-              <MobileMenuToggle />
+            {/* User Profile Button - Right */}
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 z-50">
+              <UserProfileButton />
             </div>
             
             <div className="flex items-center justify-center gap-2 mb-1">

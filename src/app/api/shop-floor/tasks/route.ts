@@ -63,17 +63,23 @@ export async function GET(request: NextRequest) {
             id: true,
             jsNumber: true,
             name: true,
+            progressPercent: true,
+            status: true,
             drawingUrl: true,
             manufacturingOrder: {
               select: {
                 id: true,
                 moNumber: true,
                 name: true,
+                progressPercent: true,
+                status: true,
                 order: {
                   select: {
                     id: true,
                     orderNumber: true,
                     customerName: true,
+                    progressPercent: true,
+                    status: true,
                   },
                 },
               },

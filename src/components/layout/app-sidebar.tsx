@@ -45,6 +45,20 @@ const navigationGroups = [
         icon: LayoutDashboard,
         roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_TECHNICIAN', 'ROLE_WAREHOUSE', 'ROLE_SUPER_ADMIN'],
       },
+      {
+        id: 'planning',
+        name: 'Planning',
+        href: '/planning',
+        icon: Calendar,
+        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_SUPER_ADMIN'],
+      },
+      {
+        id: 'gantt',
+        name: 'Gantt Chart',
+        href: '/planning/gantt',
+        icon: TrendingUp,
+        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_SUPER_ADMIN'],
+      },
     ],
   },
   {
@@ -71,27 +85,6 @@ const navigationGroups = [
         icon: Package,
         roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_SUPER_ADMIN'],
       },
-      {
-        id: 'planning',
-        name: 'Planning',
-        href: '/planning',
-        icon: Calendar,
-        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_SUPER_ADMIN'],
-      },
-      {
-        id: 'kanban',
-        name: 'Kanban Board',
-        href: '/planning/kanban',
-        icon: Kanban,
-        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_TECHNICIAN', 'ROLE_SUPER_ADMIN'],
-      },
-      {
-        id: 'gantt',
-        name: 'Gantt Chart',
-        href: '/planning/gantt',
-        icon: TrendingUp,
-        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_SUPER_ADMIN'],
-      },
     ],
   },
   {
@@ -99,10 +92,17 @@ const navigationGroups = [
     items: [
       {
         id: 'production',
-        name: 'Production',
+        name: 'Production Overview',
         href: '/production',
         icon: Wrench,
         roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_TECHNICIAN', 'ROLE_WAREHOUSE', 'ROLE_SUPER_ADMIN'],
+      },
+      {
+        id: 'kanban',
+        name: 'Kanban Board',
+        href: '/planning/kanban',
+        icon: Kanban,
+        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_TECHNICIAN', 'ROLE_SUPER_ADMIN'],
       },
       {
         id: 'machines',
@@ -222,8 +222,9 @@ export function AppSidebar() {
                 <SidebarMenu>
                   {visibleItems.map((item) => {
                     const Icon = item.icon
-                    const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`)
-                    
+                    // Use exact path matching to avoid multiple items being active
+                    const isActive = pathname === item.href
+
                     return (
                       <SidebarMenuItem key={item.id}>
                         <SidebarMenuButton

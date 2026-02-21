@@ -26,6 +26,8 @@ export async function GET(request: NextRequest) {
             name: true,
             status: true,
             progressPercent: true,
+            plannedStartDate: true,
+            plannedEndDate: true,
             jobsheets: {
               select: {
                 id: true,

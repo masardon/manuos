@@ -87,6 +87,18 @@ export default function MOListPage() {
     mo.order.customerName.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
+  const formatTimeline = (startDate: string, endDate: string) => {
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    
+    // Check for invalid dates
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return 'Not scheduled'
+    }
+    
+    return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`
+  }
+
   const getStatusBadge = (status: string) => {
     const config: Record<string, string> = {
       DRAFT: 'bg-gray-100 text-gray-800',
@@ -224,7 +236,7 @@ export default function MOListPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {new Date(mo.plannedStartDate).toLocaleDateString()} - {new Date(mo.plannedEndDate).toLocaleDateString()}
+                        {formatTimeline(mo.plannedStartDate, mo.plannedEndDate)}
                       </TableCell>
                       <TableCell>
                         <Button

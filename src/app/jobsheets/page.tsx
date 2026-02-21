@@ -26,6 +26,7 @@ interface Jobsheet {
   progressPercent: number
   plannedStartDate: string
   plannedEndDate: string
+  moId: string
   moNumber: string
   moName: string
   orderNumber: string
@@ -61,6 +62,7 @@ export default function JobsheetsPage() {
                     progressPercent: js.progressPercent,
                     plannedStartDate: js.plannedStartDate,
                     plannedEndDate: js.plannedEndDate,
+                    moId: mo.id,
                     moNumber: mo.moNumber,
                     moName: mo.name,
                     orderNumber: order.orderNumber,
@@ -87,10 +89,10 @@ export default function JobsheetsPage() {
   }, [])
 
   const filteredJobsheets = jobsheets.filter((js) =>
-    js.jsNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    js.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    js.moNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    js.orderNumber.toLowerCase().includes(searchTerm.toLowerCase())
+    js.jsNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    js.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    js.moNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    js.orderNumber?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const getStatusBadge = (status: string) => {
@@ -100,7 +102,8 @@ export default function JobsheetsPage() {
       COMPLETED: 'bg-green-100 text-green-800',
       CANCELLED: 'bg-red-100 text-red-800',
     }
-    return <Badge className={config[status] || 'bg-gray-100 text-gray-800'}>{status.replace(/_/g, ' ')}</Badge>
+    const statusValue = status || 'PREPARING'
+    return <Badge className={config[statusValue] || 'bg-gray-100 text-gray-800'}>{statusValue.replace(/_/g, ' ')}</Badge>
   }
 
   return (
@@ -241,9 +244,9 @@ export default function JobsheetsPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => router.push(`/mo/${js.id}`)}
+                          onClick={() => router.push(`/mo/${js.moId}`)}
                         >
-                          View
+                          View MO
                         </Button>
                       </TableCell>
                     </TableRow>

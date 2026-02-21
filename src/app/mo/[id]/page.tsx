@@ -105,23 +105,33 @@ export default function MODetailPage() {
 
   const fetchMODetails = async () => {
     try {
-      // Fetch MO details
-      const moRes = await fetch(`/api/orders/${params.id}/approve`)
-      if (moRes.ok) {
-        const moData = await moRes.json()
-        // Find the specific MO from the order
-        if (moData.order && moData.order.manufacturingOrders) {
-          const currentMO = moData.order.manufacturingOrders.find((m: any) => m.id === params.id)
-          if (currentMO) {
-            setMo({
-              ...currentMO,
-              order: moData.order,
-            })
+      // Fetch all orders to find the MO
+      const ordersRes = await fetch('/api/orders')
+      if (ordersRes.ok) {
+        const ordersData = await ordersRes.json()
+        
+        // Find the MO across all orders
+        let foundMO = null
+        let foundOrder = null
+        
+        for (const order of ordersData.orders || []) {
+          const mo = order.manufacturingOrders?.find((m: any) => m.id === params.id)
+          if (mo) {
+            foundMO = mo
+            foundOrder = order
+            break
           }
+        }
+        
+        if (foundMO && foundOrder) {
+          setMo({
+            ...foundMO,
+            order: foundOrder,
+          })
         }
       }
 
-      // Fetch jobsheets
+      // Fetch jobsheets for this MO
       const jsRes = await fetch(`/api/mo/${params.id}/jobsheets`)
       if (jsRes.ok) {
         const jsData = await jsRes.json()
@@ -268,13 +278,29 @@ export default function MODetailPage() {
     }
   }
 
-  if (loading || !mo) {
+  if (loading) {
     return (
       <AppLayout title="MO Details">
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-            <p className="text-muted-foreground mt-4">Loading...</p>
+            <p className="text-muted-foreground mt-4">Loading MO details...</p>
+          </div>
+        </div>
+      </AppLayout>
+    )
+  }
+
+  if (!mo) {
+    return (
+      <AppLayout title="MO Not Found">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <p className="text-muted-foreground mb-4">Manufacturing Order not found</p>
+            <Button onClick={() => router.push('/mo')}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to MO List
+            </Button>
           </div>
         </div>
       </AppLayout>

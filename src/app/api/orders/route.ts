@@ -23,8 +23,17 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             moNumber: true,
+            name: true,
             status: true,
             progressPercent: true,
+            jobsheets: {
+              select: {
+                id: true,
+                jsNumber: true,
+                name: true,
+                machiningTasks: true,
+              },
+            },
           },
         },
       },
@@ -42,6 +51,10 @@ export async function GET(request: NextRequest) {
       progressPercent: order.progressPercent || 0,
       createdAt: order.createdAt.toISOString(),
       manufacturingOrdersCount: order.manufacturingOrders.length,
+      manufacturingOrders: order.manufacturingOrders.map((mo) => ({
+        ...mo,
+        jobsheetsCount: mo.jobsheets.length,
+      })),
     }))
 
     return NextResponse.json({

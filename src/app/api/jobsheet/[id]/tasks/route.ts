@@ -10,12 +10,25 @@ interface Params {
 export async function GET(request: NextRequest, { params }: Params) {
   try {
     const { id } = await params
-    
+
     const tasks = await db.machiningTask.findMany({
       where: { jobsheetId: id },
       include: {
-        machine: true,
-        assignedUser: true,
+        machine: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            type: true,
+          },
+        },
+        assignedUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
       },
       orderBy: {
         taskNumber: 'asc',
@@ -52,22 +65,11 @@ export async function POST(request: NextRequest, { params }: Params) {
       plannedEndDate,
     } = body
 
-    if (!taskNumber || !name || !plannedHours) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      )
-    }
-
     // Get jobsheet to get tenant and MO info
     const jobsheet = await db.jobsheet.findUnique({
       where: { id },
       include: {
-        manufacturingOrder: {
-          include: {
-            order: true,
-          },
-        },
+        manufacturingOrder: true,
       },
     })
 
@@ -78,24 +80,40 @@ export async function POST(request: NextRequest, { params }: Params) {
       )
     }
 
+    // Generate task number if not provided
+    const taskNum = taskNumber || await generateTaskNumber(id)
+
     const task = await db.machiningTask.create({
       data: {
         tenantId: jobsheet.tenantId,
         jobsheetId: id,
-        taskNumber,
+        taskNumber: taskNum,
         name,
-        description,
+        description: description || null,
         machineId: machineId || null,
         assignedTo: assignedTo || null,
-        plannedHours: parseFloat(plannedHours),
-        status: TaskStatus.PENDING,
-        progressPercent: 0,
+        plannedHours: plannedHours ? parseFloat(plannedHours) : null,
         plannedStartDate: plannedStartDate ? new Date(plannedStartDate) : null,
         plannedEndDate: plannedEndDate ? new Date(plannedEndDate) : null,
+        status: TaskStatus.PENDING,
+        progressPercent: 0,
       },
       include: {
-        machine: true,
-        assignedUser: true,
+        machine: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            type: true,
+          },
+        },
+        assignedUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
       },
     })
 
@@ -113,83 +131,17 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 }
 
-// PUT /api/jobsheet/[id]/tasks/[taskId] - Update a task
-export async function PUT(request: NextRequest, { params }: Params) {
-  try {
-    const { id } = await params
-    const { searchParams } = new URL(request.url)
-    const taskId = searchParams.get('taskId')
-    const body = await request.json()
+// Helper function to generate task number
+async function generateTaskNumber(jobsheetId: string) {
+  const jobsheet = await db.jobsheet.findUnique({
+    where: { id: jobsheetId },
+    include: {
+      machiningTasks: true,
+    },
+  })
 
-    if (!taskId) {
-      return NextResponse.json(
-        { error: 'Task ID required' },
-        { status: 400 }
-      )
-    }
+  if (!jobsheet) return `TASK-${Date.now()}`
 
-    const task = await db.machiningTask.update({
-      where: { id: taskId },
-      data: {
-        name: body.name,
-        description: body.description,
-        machineId: body.machineId,
-        assignedTo: body.assignedTo,
-        plannedHours: body.plannedHours ? parseFloat(body.plannedHours) : undefined,
-        status: body.status,
-        progressPercent: body.progressPercent,
-        clockedInAt: body.clockedInAt ? new Date(body.clockedInAt) : undefined,
-        clockedOutAt: body.clockedOutAt ? new Date(body.clockedOutAt) : undefined,
-        breakdownAt: body.breakdownAt ? new Date(body.breakdownAt) : undefined,
-        breakdownNote: body.breakdownNote,
-      },
-      include: {
-        machine: true,
-        assignedUser: true,
-      },
-    })
-
-    return NextResponse.json({
-      success: true,
-      task,
-      message: 'Task updated successfully',
-    })
-  } catch (error) {
-    console.error('Error updating task:', error)
-    return NextResponse.json(
-      { error: 'Failed to update task' },
-      { status: 500 }
-    )
-  }
-}
-
-// DELETE /api/jobsheet/[id]/tasks/[taskId] - Delete a task
-export async function DELETE(request: NextRequest, { params }: Params) {
-  try {
-    const { id } = await params
-    const { searchParams } = new URL(request.url)
-    const taskId = searchParams.get('taskId')
-
-    if (!taskId) {
-      return NextResponse.json(
-        { error: 'Task ID required' },
-        { status: 400 }
-      )
-    }
-
-    await db.machiningTask.delete({
-      where: { id: taskId },
-    })
-
-    return NextResponse.json({
-      success: true,
-      message: 'Task deleted successfully',
-    })
-  } catch (error) {
-    console.error('Error deleting task:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete task' },
-      { status: 500 }
-    )
-  }
+  const nextNum = jobsheet.machiningTasks.length + 1
+  return `${jobsheet.jsNumber}-T${nextNum.toString().padStart(2, '0')}`
 }

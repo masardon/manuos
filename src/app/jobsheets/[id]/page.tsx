@@ -22,8 +22,32 @@ import {
   Play,
   Pause,
   Square,
+  Plus,
+  Trash2,
+  Edit,
+  Kanban,
+  Store,
+  X,
 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface Task {
   id: string
@@ -84,9 +108,24 @@ export default function JobsheetDetailPage() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [jobsheet, setJobsheet] = useState<Jobsheet | null>(null)
+  const [machines, setMachines] = useState<any[]>([])
+  const [users, setUsers] = useState<any[]>([])
+  
+  // Task dialog state
+  const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false)
+  const [editingTask, setEditingTask] = useState<Task | null>(null)
+  const [taskForm, setTaskForm] = useState({
+    name: '',
+    description: '',
+    machineId: '',
+    assignedTo: '',
+    plannedHours: '',
+  })
 
   useEffect(() => {
     fetchJobsheet()
+    fetchMachines()
+    fetchUsers()
   }, [params.id])
 
   const fetchJobsheet = async () => {
@@ -111,6 +150,112 @@ export default function JobsheetDetailPage() {
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchMachines = async () => {
+    try {
+      const response = await fetch('/api/machines')
+      if (response.ok) {
+        const data = await response.json()
+        setMachines(data.machines || [])
+      }
+    } catch (error) {
+      console.error('Error fetching machines:', error)
+    }
+  }
+
+  const fetchUsers = async () => {
+    try {
+      const response = await fetch('/api/users')
+      if (response.ok) {
+        const data = await response.json()
+        setUsers(data.users || [])
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error)
+    }
+  }
+
+  const handleAddTask = () => {
+    setEditingTask(null)
+    setTaskForm({
+      name: '',
+      description: '',
+      machineId: '',
+      assignedTo: '',
+      plannedHours: '',
+    })
+    setIsTaskDialogOpen(true)
+  }
+
+  const handleEditTask = (task: Task) => {
+    setEditingTask(task)
+    setTaskForm({
+      name: task.name,
+      description: task.description || '',
+      machineId: task.machine?.id || '',
+      assignedTo: task.assignedUser?.id || '',
+      plannedHours: task.plannedHours?.toString() || '',
+    })
+    setIsTaskDialogOpen(true)
+  }
+
+  const handleDeleteTask = async (taskId: string, taskNumber: string) => {
+    if (!confirm(`Are you sure you want to delete task ${taskNumber}?`)) return
+
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        toast({
+          title: 'Success',
+          description: 'Task deleted successfully',
+        })
+        await fetchJobsheet()
+      } else {
+        throw new Error('Failed to delete task')
+      }
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to delete task',
+      })
+    }
+  }
+
+  const handleSaveTask = async () => {
+    try {
+      const url = editingTask
+        ? `/api/tasks/${editingTask.id}`
+        : `/api/jobsheet/${params.id}/tasks`
+
+      const response = await fetch(url, {
+        method: editingTask ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(taskForm),
+      })
+
+      if (response.ok) {
+        toast({
+          title: 'Success',
+          description: editingTask ? 'Task updated successfully' : 'Task created successfully',
+        })
+        setIsTaskDialogOpen(false)
+        await fetchJobsheet()
+      } else {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to save task')
+      }
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to save task',
+      })
     }
   }
 
@@ -189,10 +334,26 @@ export default function JobsheetDetailPage() {
               <h1 className="text-3xl font-bold">{jobsheet.name}</h1>
             </div>
           </div>
-          <Button variant="outline" onClick={fetchJobsheet} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Shortcuts */}
+            <Button variant="outline" size="sm" onClick={() => router.push('/planning/kanban')}>
+              <Kanban className="h-4 w-4 mr-2" />
+              Kanban
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => router.push('/shop-floor')}>
+              <Store className="h-4 w-4 mr-2" />
+              Shop Floor
+            </Button>
+            <Separator orientation="vertical" className="h-6" />
+            <Button variant="outline" onClick={fetchJobsheet} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button onClick={handleAddTask}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Task
+            </Button>
+          </div>
         </div>
 
         {/* Progress Overview */}
@@ -341,6 +502,22 @@ export default function JobsheetDetailPage() {
                           <span className="font-semibold">{task.name}</span>
                         </div>
                         <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleEditTask(task)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteTask(task.id, task.taskNumber)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                           <div className={`w-2 h-2 rounded-full ${getTaskStatusColor(task.status)}`} />
                           <Badge variant="outline">{task.status.replace(/_/g, ' ')}</Badge>
                         </div>
@@ -439,6 +616,99 @@ export default function JobsheetDetailPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Task Dialog */}
+        <Dialog open={isTaskDialogOpen} onOpenChange={setIsTaskDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                {editingTask ? 'Edit Task' : 'Add New Task'}
+              </DialogTitle>
+              <DialogDescription>
+                {editingTask ? 'Update task details' : 'Create a new machining task for this jobsheet'}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="taskName">Task Name *</Label>
+                <Input
+                  id="taskName"
+                  value={taskForm.name}
+                  onChange={(e) => setTaskForm({ ...taskForm, name: e.target.value })}
+                  placeholder="e.g., Rough Milling Operation"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="taskDescription">Description</Label>
+                <Textarea
+                  id="taskDescription"
+                  value={taskForm.description}
+                  onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })}
+                  placeholder="Task description..."
+                  rows={3}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="machine">Machine</Label>
+                  <Select
+                    value={taskForm.machineId}
+                    onValueChange={(value) => setTaskForm({ ...taskForm, machineId: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select machine" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {machines.map((machine) => (
+                        <SelectItem key={machine.id} value={machine.id}>
+                          {machine.name} ({machine.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="technician">Technician</Label>
+                  <Select
+                    value={taskForm.assignedTo}
+                    onValueChange={(value) => setTaskForm({ ...taskForm, assignedTo: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select technician" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users.map((user) => (
+                        <SelectItem key={user.id} value={user.id}>
+                          {user.name || user.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="plannedHours">Planned Hours</Label>
+                <Input
+                  id="plannedHours"
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={taskForm.plannedHours}
+                  onChange={(e) => setTaskForm({ ...taskForm, plannedHours: e.target.value })}
+                  placeholder="e.g., 4.0"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsTaskDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveTask} disabled={!taskForm.name.trim()}>
+                {editingTask ? 'Update Task' : 'Create Task'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AppLayout>
   )

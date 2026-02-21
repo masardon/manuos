@@ -84,7 +84,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         where: { id },
         data: {
           clockedInAt: now,
-          status: 'RUNNING',
+          status: 'RUNNING', // Update status to RUNNING when clocking in
         },
       })
 

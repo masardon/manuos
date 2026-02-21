@@ -89,7 +89,10 @@ export default function ShopFloorPage() {
   const fetchTasks = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/shop-floor/tasks')
+      const url = filter !== 'all' 
+        ? `/api/shop-floor/tasks?status=${filter}`
+        : '/api/shop-floor/tasks'
+      const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
         setTasks(data.tasks || [])
@@ -108,7 +111,7 @@ export default function ShopFloorPage() {
 
   useEffect(() => {
     fetchTasks()
-  }, [])
+  }, [filter]) // Refetch when filter changes
 
   // Clock in/out
   const handleClockAction = async (taskId: string, action: 'clock_in' | 'clock_out') => {
@@ -139,13 +142,6 @@ export default function ShopFloorPage() {
       setUpdating(null)
     }
   }
-
-  // Filter tasks
-  const filteredTasks = tasks.filter((task) => {
-    if (filter === 'running') return task.clockedInAt && !task.clockedOutAt
-    if (filter === 'pending') return !task.clockedInAt || task.clockedOutAt
-    return true
-  })
 
   // Format time (24-hour format)
   const formatTime = (date: Date) => {
@@ -256,7 +252,7 @@ export default function ShopFloorPage() {
         <div className="flex-1 overflow-y-auto px-4 py-3">
           {/* Task Count */}
           <div className="text-center text-sm text-muted-foreground mb-3">
-            {filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''} found
+            {tasks.length} task{tasks.length !== 1 ? 's' : ''} found
           </div>
 
           {loading ? (
@@ -264,7 +260,7 @@ export default function ShopFloorPage() {
               <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
               <p className="text-muted-foreground">Loading tasks...</p>
             </div>
-          ) : filteredTasks.length === 0 ? (
+          ) : tasks.length === 0 ? (
             <Card>
               <CardContent className="text-center py-12">
                 <User className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
@@ -273,7 +269,7 @@ export default function ShopFloorPage() {
             </Card>
           ) : (
             <div className="space-y-3">
-            {filteredTasks.map((task) => {
+            {tasks.map((task) => {
               const isClockedIn = task.clockedInAt && !task.clockedOutAt
               const isUpdating = updating === task.id
 

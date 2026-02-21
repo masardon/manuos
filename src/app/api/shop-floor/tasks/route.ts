@@ -15,10 +15,18 @@ export async function GET(request: NextRequest) {
       where.assignedTo = assignedTo
     }
 
-    // Only show active tasks (not completed or cancelled)
-    if (status) {
-      where.status = status
+    // Filter by running status (clocked in but not clocked out)
+    if (status === 'running') {
+      where.clockedInAt = { not: null }
+      where.clockedOutAt = null
+    } else if (status === 'pending') {
+      // Show tasks that are not currently being worked on
+      where.OR = [
+        { clockedInAt: null },
+        { clockedOutAt: { not: null } },
+      ]
     } else {
+      // Default: show all active tasks (not completed or cancelled)
       where.status = {
         notIn: ['COMPLETED', 'CANCELLED'],
       }

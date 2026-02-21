@@ -11,6 +11,8 @@ import {
   useSensors,
   DragOverEvent,
   closestCorners,
+  useDroppable,
+  useDraggable,
 } from '@dnd-kit/core'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -97,6 +99,23 @@ interface KanbanColumn {
   status: string
   icon: React.ReactNode
   color: string
+}
+
+// Droppable Column Component
+function DroppableColumn({ id, children, className }: { id: string; children: React.ReactNode; className?: string }) {
+  const { setNodeRef, isOver } = useDroppable({ id })
+  
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        className,
+        isOver && 'ring-2 ring-primary bg-muted/50'
+      )}
+    >
+      {children}
+    </div>
+  )
 }
 
 const COLUMNS: KanbanColumn[] = [
@@ -298,14 +317,28 @@ export default function KanbanPage() {
     return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
   }
 
-  const TaskCard = ({ task }: { task: Task }) => (
-    <div
-      className={cn(
-        'bg-white dark:bg-slate-800 rounded-lg shadow-sm border-2 border-transparent',
-        'p-4 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow',
-        updatingTask === task.id && 'opacity-50 pointer-events-none'
-      )}
-    >
+  const TaskCard = ({ task }: { task: Task }) => {
+    const { attributes, listeners, setNodeRef, transform } = useDraggable({
+      id: task.id,
+      data: task,
+    })
+
+    const style = transform ? {
+      transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+    } : undefined
+
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        {...listeners}
+        {...attributes}
+        className={cn(
+          'bg-white dark:bg-slate-800 rounded-lg shadow-sm border-2 border-transparent',
+          'p-4 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow',
+          updatingTask === task.id && 'opacity-50 pointer-events-none'
+        )}
+      >
       {/* Task Header */}
       <div className="flex items-start justify-between mb-3">
         <Link
@@ -399,7 +432,8 @@ export default function KanbanPage() {
         </div>
       )}
     </div>
-  )
+    )
+  }
 
   return (
     <AppLayout title="Kanban">
@@ -529,8 +563,9 @@ export default function KanbanPage() {
               const columnTasks = getTasksForColumn(column.status)
 
               return (
-                <div
+                <DroppableColumn
                   key={column.id}
+                  id={column.status}
                   className={cn(
                     'flex-shrink-0 w-80 rounded-lg border-2 p-3',
                     column.color
@@ -561,7 +596,7 @@ export default function KanbanPage() {
                       )}
                     </div>
                   </ScrollArea>
-                </div>
+                </DroppableColumn>
               )
             })}
           </div>

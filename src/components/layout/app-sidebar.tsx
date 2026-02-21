@@ -29,6 +29,7 @@ import {
   Building2,
   LogOut,
   User,
+  Play,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -102,6 +103,13 @@ const navigationGroups = [
         name: 'Kanban Board',
         href: '/planning/kanban',
         icon: Kanban,
+        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_TECHNICIAN', 'ROLE_SUPER_ADMIN'],
+      },
+      {
+        id: 'shop-floor',
+        name: 'Shop Floor',
+        href: '/shop-floor',
+        icon: Play,
         roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_TECHNICIAN', 'ROLE_SUPER_ADMIN'],
       },
       {

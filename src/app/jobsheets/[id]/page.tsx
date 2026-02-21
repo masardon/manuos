@@ -608,6 +608,34 @@ export default function JobsheetDetailPage() {
                         <Progress value={task.progressPercent} className="h-2" />
                       </div>
 
+                      {/* Proceed Button - Only for uncompleted tasks */}
+                      {task.status !== 'COMPLETED' && (
+                        <div className="mt-3">
+                          <Button
+                            className="w-full h-12"
+                            variant={task.clockedInAt && !task.clockedOutAt ? 'destructive' : 'default'}
+                            onClick={() => router.push('/shop-floor')}
+                          >
+                            {task.clockedInAt && !task.clockedOutAt ? (
+                              <>
+                                <Square className="h-5 w-5 mr-2" />
+                                Clock Out
+                              </>
+                            ) : task.status === 'PAUSED' ? (
+                              <>
+                                <Play className="h-5 w-5 mr-2" />
+                                Resume
+                              </>
+                            ) : (
+                              <>
+                                <Play className="h-5 w-5 mr-2" />
+                                Clock In
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      )}
+
                       {(task.clockedInAt || task.clockedOutAt) && (
                         <div className="mt-3 pt-3 border-t">
                           <div className="grid grid-cols-2 gap-3 text-xs">

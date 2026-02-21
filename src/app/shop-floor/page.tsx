@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast'
 import {
   Clock,
   Play,
+  Pause,
   Square,
   FileText,
   Wrench,
@@ -76,7 +77,7 @@ export default function ShopFloorPage() {
   const [currentTime, setCurrentTime] = useState<Date | null>(null)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [isDrawingOpen, setIsDrawingOpen] = useState(false)
-  const [filter, setFilter] = useState<'all' | 'running' | 'pending'>('all')
+  const [filter, setFilter] = useState<'todo' | 'completed' | 'running'>('todo')
 
   // Live clock - only start on client
   useEffect(() => {
@@ -113,8 +114,8 @@ export default function ShopFloorPage() {
     fetchTasks()
   }, [filter]) // Refetch when filter changes
 
-  // Clock in/out
-  const handleClockAction = async (taskId: string, action: 'clock_in' | 'clock_out') => {
+  // Clock in/out/pause
+  const handleClockAction = async (taskId: string, action: 'clock_in' | 'clock_out' | 'pause') => {
     setUpdating(taskId)
     try {
       const response = await fetch(`/api/tasks/${taskId}/clock`, {
@@ -127,7 +128,7 @@ export default function ShopFloorPage() {
         await fetchTasks()
         toast({
           title: 'Success',
-          description: action === 'clock_in' ? 'Clocked in successfully' : 'Clocked out successfully',
+          description: action === 'clock_in' ? 'Clocked in successfully' : action === 'clock_out' ? 'Clocked out successfully' : 'Task paused',
         })
       } else {
         throw new Error('Failed to update')
@@ -174,10 +175,15 @@ export default function ShopFloorPage() {
   }
 
   const getStatusColor = (task: Task) => {
-    if (task.clockedInAt && !task.clockedOutAt) return 'bg-emerald-500'
-    if (task.status === 'COMPLETED') return 'bg-green-500'
+    if (task.status === 'RUNNING' && task.clockedInAt && !task.clockedOutAt) return 'bg-emerald-500'
     if (task.status === 'PAUSED') return 'bg-amber-500'
+    if (task.status === 'COMPLETED') return 'bg-green-500'
     return 'bg-slate-400'
+  }
+
+  // Check if task is currently being worked on (for showing clock out button)
+  const isTaskActive = (task: Task) => {
+    return task.clockedInAt && !task.clockedOutAt && (task.status === 'RUNNING' || task.status === 'PAUSED')
   }
 
   return (
@@ -211,12 +217,12 @@ export default function ShopFloorPage() {
         <div className="shrink-0 bg-background py-2 px-4 shadow-md border-b">
           <div className="flex gap-2">
             <Button
-              variant={filter === 'all' ? 'default' : 'outline'}
+              variant={filter === 'todo' ? 'default' : 'outline'}
               size="sm"
               className="flex-1 text-xs md:text-sm"
-              onClick={() => setFilter('all')}
+              onClick={() => setFilter('todo')}
             >
-              All
+              Todo
             </Button>
             <Button
               variant={filter === 'running' ? 'default' : 'outline'}
@@ -228,13 +234,13 @@ export default function ShopFloorPage() {
               Running
             </Button>
             <Button
-              variant={filter === 'pending' ? 'default' : 'outline'}
+              variant={filter === 'completed' ? 'default' : 'outline'}
               size="sm"
               className="flex-1 text-xs md:text-sm"
-              onClick={() => setFilter('pending')}
+              onClick={() => setFilter('completed')}
             >
-              <Clock className="h-3 w-3 md:h-4 md:w-4 mr-1" />
-              Pending
+              <CheckCircle className="h-3 w-3 md:h-4 md:w-4 mr-1" />
+              Completed
             </Button>
             <Button
               variant="outline"
@@ -270,11 +276,11 @@ export default function ShopFloorPage() {
           ) : (
             <div className="space-y-3">
             {tasks.map((task) => {
-              const isClockedIn = task.clockedInAt && !task.clockedOutAt
+              const isActive = isTaskActive(task)
               const isUpdating = updating === task.id
 
               return (
-                <Card key={task.id} className={`overflow-hidden border-2 ${isClockedIn ? 'border-emerald-500 shadow-emerald-500/20 shadow-lg' : ''}`}>
+                <Card key={task.id} className={`overflow-hidden border-2 ${isActive ? 'border-emerald-500 shadow-emerald-500/20 shadow-lg' : ''}`}>
                   {/* Status Bar */}
                   <div className={`h-2 ${getStatusColor(task)}`} />
 
@@ -286,7 +292,7 @@ export default function ShopFloorPage() {
                           <Badge variant="outline" className="text-xs shrink-0">
                             {task.taskNumber}
                           </Badge>
-                          {isClockedIn && (
+                          {isActive && (
                             <Badge className="bg-emerald-500 text-xs shrink-0">
                               <CheckCircle className="h-3 w-3 mr-1" />
                               Running
@@ -347,7 +353,7 @@ export default function ShopFloorPage() {
                     )}
 
                     {/* Time Info */}
-                    {isClockedIn && task.clockedInAt && (
+                    {isActive && task.clockedInAt && (
                       <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-lg p-3">
                         <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
                           <Clock className="h-4 w-4" />
@@ -382,17 +388,58 @@ export default function ShopFloorPage() {
 
                     {/* Action Buttons */}
                     <div className="flex gap-2 pt-2">
-                      {isClockedIn ? (
+                      {task.status === 'COMPLETED' ? (
+                        // Completed state - show grey Completed button
                         <Button
-                          className="flex-1 h-14 text-lg"
-                          variant="outline"
-                          onClick={() => handleClockAction(task.id, 'clock_out')}
-                          disabled={isUpdating}
+                          className="flex-1 h-14 text-lg bg-slate-400 text-white cursor-not-allowed"
+                          disabled
                         >
-                          <Square className="h-5 w-5 mr-2" />
-                          Clock Out
+                          <CheckCircle className="h-5 w-5 mr-2" />
+                          Completed
                         </Button>
+                      ) : isActive ? (
+                        // Active state (Running or Paused)
+                        <>
+                          {/* Pause Button - Only show when RUNNING (not paused) */}
+                          {task.status === 'RUNNING' && (
+                            <Button
+                              variant="outline"
+                              className="h-14 w-14 shrink-0 bg-orange-100 border-orange-300 text-orange-700 hover:bg-orange-200 hover:text-orange-800"
+                              onClick={() => handleClockAction(task.id, 'pause')}
+                              disabled={isUpdating}
+                              title="Pause task"
+                            >
+                              <Pause className="h-6 w-6" />
+                            </Button>
+                          )}
+
+                          {/* Resume Button - Only show when PAUSED */}
+                          {task.status === 'PAUSED' && (
+                            <Button
+                              variant="outline"
+                              className="h-14 w-14 shrink-0 bg-blue-100 border-blue-300 text-blue-700 hover:bg-blue-200 hover:text-blue-800"
+                              onClick={() => handleClockAction(task.id, 'clock_in')}
+                              disabled={isUpdating}
+                              title="Resume task"
+                            >
+                              <Play className="h-6 w-6" />
+                            </Button>
+                          )}
+
+                          {/* Clock Out Button - Disabled when PAUSED */}
+                          <Button
+                            className="flex-1 h-14 text-lg bg-red-600 hover:bg-red-700 hover:text-white"
+                            variant="destructive"
+                            onClick={() => handleClockAction(task.id, 'clock_out')}
+                            disabled={isUpdating || task.status === 'PAUSED'}
+                            title={task.status === 'PAUSED' ? 'Resume task before clocking out' : 'Clock out'}
+                          >
+                            <Square className="h-5 w-5 mr-2" />
+                            Clock Out
+                          </Button>
+                        </>
                       ) : (
+                        // Not started state - show Clock In button
                         <Button
                           className="flex-1 h-14 text-lg bg-emerald-600 hover:bg-emerald-700"
                           onClick={() => handleClockAction(task.id, 'clock_in')}
@@ -404,19 +451,18 @@ export default function ShopFloorPage() {
                       )}
 
                       {/* View Drawing Button */}
-                      {task.jobsheet.drawingUrl && (
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => {
-                            setSelectedTask(task)
-                            setIsDrawingOpen(true)
-                          }}
-                          disabled={isUpdating}
-                        >
-                          <FileText className="h-5 w-5" />
-                        </Button>
-                      )}
+                      <Button
+                        variant="outline"
+                        className="h-14 w-14 shrink-0"
+                        onClick={() => {
+                          setSelectedTask(task)
+                          setIsDrawingOpen(true)
+                        }}
+                        disabled={isUpdating || !task.jobsheet.drawingUrl}
+                        title={task.jobsheet.drawingUrl ? 'View Engineering Drawing' : 'No drawing available'}
+                      >
+                        <FileText className={`h-6 w-6 ${task.jobsheet.drawingUrl ? 'text-blue-600' : 'text-muted-foreground'}`} />
+                      </Button>
                     </div>
 
                     {/* Breakdown Alert */}
@@ -447,18 +493,9 @@ export default function ShopFloorPage() {
         <Dialog open={isDrawingOpen} onOpenChange={setIsDrawingOpen}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
             <DialogHeader>
-              <div className="flex items-center justify-between">
-                <DialogTitle>
-                  {selectedTask?.jobsheet.drawingUrl ? 'Engineering Drawing' : 'No Drawing Available'}
-                </DialogTitle>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setIsDrawingOpen(false)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
+              <DialogTitle>
+                {selectedTask?.jobsheet.drawingUrl ? 'Engineering Drawing' : 'No Drawing Available'}
+              </DialogTitle>
             </DialogHeader>
             {selectedTask?.jobsheet.drawingUrl ? (
               <div className="flex-1 overflow-auto bg-muted rounded-lg">

@@ -125,6 +125,8 @@ async function main() {
             plannedStartDate: new Date(),
             plannedEndDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), // 15 days
             progressPercent: 0,
+            // Add sample CAM drawing URL
+            drawingUrl: `https://via.placeholder.com/1200x800/2563eb/ffffff?text=CAM+Drawing+${jsNumber}`,
           },
         })
 

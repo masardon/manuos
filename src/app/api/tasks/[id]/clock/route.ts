@@ -48,7 +48,7 @@ async function calculateOrderProgress(orderId: string) {
   return Math.round(mos.reduce((sum, mo) => sum + mo.progressPercent, 0) / mos.length)
 }
 
-// POST /api/tasks/[id]/clock - Clock in/out of task
+// POST /api/tasks/[id]/clock - Clock in/out/pause of task
 export async function POST(request: NextRequest, { params }: Params) {
   try {
     const { id } = await params
@@ -84,6 +84,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         where: { id },
         data: {
           clockedInAt: now,
+          clockedOutAt: null, // Clear clockedOutAt when clocking in
           status: 'RUNNING', // Update status to RUNNING when clocking in
         },
       })
@@ -112,6 +113,19 @@ export async function POST(request: NextRequest, { params }: Params) {
         message: 'Clocked out successfully',
         clockedOutAt: now.toISOString(),
         actualHours,
+      })
+    } else if (action === 'pause') {
+      // Pause the task - keep clockedInAt but change status to PAUSED
+      await db.machiningTask.update({
+        where: { id },
+        data: {
+          status: 'PAUSED',
+        },
+      })
+
+      return NextResponse.json({
+        success: true,
+        message: 'Task paused',
       })
     }
 

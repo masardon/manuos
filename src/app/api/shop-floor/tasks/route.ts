@@ -15,21 +15,28 @@ export async function GET(request: NextRequest) {
       where.assignedTo = assignedTo
     }
 
-    // Filter by running status (clocked in but not clocked out)
+    // Filter by status
     if (status === 'running') {
+      // Currently being worked on (RUNNING or PAUSED, clocked in, not clocked out)
+      where.OR = [
+        { status: 'RUNNING' },
+        { status: 'PAUSED' },
+      ]
       where.clockedInAt = { not: null }
       where.clockedOutAt = null
-    } else if (status === 'pending') {
-      // Show tasks that are not currently being worked on
+    } else if (status === 'completed') {
+      // Completed tasks
+      where.status = 'COMPLETED'
+    } else {
+      // Default (todo): Show all active tasks that are not completed/cancelled and not currently running
+      where.status = {
+        notIn: ['COMPLETED', 'CANCELLED'],
+      }
+      // Exclude running/paused tasks (they have their own tab)
       where.OR = [
         { clockedInAt: null },
         { clockedOutAt: { not: null } },
       ]
-    } else {
-      // Default: show all active tasks (not completed or cancelled)
-      where.status = {
-        notIn: ['COMPLETED', 'CANCELLED'],
-      }
     }
 
     // Get tasks with relations

@@ -1,10 +1,10 @@
-# 🚀 Welcome to Z.ai Code Scaffold
+# 🏭 ManuOS - Manufacturing Operating System
 
-A modern, production-ready web application scaffold powered by cutting-edge technologies, designed to accelerate your development with [Z.ai](https://chat.z.ai)'s AI-powered coding assistance.
+A modern, production-ready manufacturing management system built with cutting-edge web technologies. ManuOS provides complete production planning, scheduling, and execution capabilities for modern manufacturing operations.
 
 ## ✨ Technology Stack
 
-This scaffold provides a robust foundation built with:
+ManuOS is built on a robust, scalable foundation:
 
 ### 🎯 Core Framework
 - **⚡ Next.js 16** - The React framework for production with App Router
@@ -15,7 +15,7 @@ This scaffold provides a robust foundation built with:
 - **🧩 shadcn/ui** - High-quality, accessible components built on Radix UI
 - **🎯 Lucide React** - Beautiful & consistent icon library
 - **🌈 Framer Motion** - Production-ready motion library for React
-- **🎨 Next Themes** - Perfect dark mode in 2 lines of code
+- **🎨 Next Themes** - Perfect dark mode support
 
 ### 📋 Forms & Validation
 - **🎣 React Hook Form** - Performant forms with easy validation
@@ -39,20 +39,20 @@ This scaffold provides a robust foundation built with:
 ### 🌍 Internationalization & Utilities
 - **🌍 Next Intl** - Internationalization library for Next.js
 - **📅 Date-fns** - Modern JavaScript date utility library
-- **🪝 ReactUse** - Collection of essential React hooks for modern development
+- **🪝 ReactUse** - Collection of essential React hooks
 
-## 🎯 Why This Scaffold?
+## 🎯 Why ManuOS?
 
-- **🏎️ Fast Development** - Pre-configured tooling and best practices
-- **🎨 Beautiful UI** - Complete shadcn/ui component library with advanced interactions
-- **🔒 Type Safety** - Full TypeScript configuration with Zod validation
-- **📱 Responsive** - Mobile-first design principles with smooth animations
-- **🗄️ Database Ready** - Prisma ORM configured for rapid backend development
-- **🔐 Auth Included** - NextAuth.js for secure authentication flows
-- **📊 Data Visualization** - Charts, tables, and drag-and-drop functionality
-- **🌍 i18n Ready** - Multi-language support with Next Intl
-- **🚀 Production Ready** - Optimized build and deployment settings
-- **🤖 AI-Friendly** - Structured codebase perfect for AI assistance
+- **🏭 Manufacturing Focused** - Built specifically for manufacturing operations
+- **📅 Production Planning** - Gantt charts and Kanban boards for scheduling
+- **📊 Real-time Tracking** - Live production status and progress monitoring
+- **🔧 Machine Management** - Track machines, maintenance, and breakdowns
+- **📦 Inventory Control** - Material tracking with low-stock alerts
+- **👥 Role-based Access** - Different views for different user roles
+- **📈 Analytics & Reports** - Production efficiency and performance metrics
+- **🌐 Modern UI** - Clean, intuitive interface with dark mode support
+- **🔒 Type Safe** - Full TypeScript with Zod validation
+- **🚀 Production Ready** - Optimized for deployment and scale
 
 ## 🚀 Quick Start
 
@@ -70,72 +70,137 @@ bun run build
 bun start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see your application running.
+Open [http://localhost:3000](http://localhost:3000) to see ManuOS running.
 
-## 🤖 Powered by Z.ai
+## 🏭 Manufacturing Features
 
-This scaffold is optimized for use with [Z.ai](https://chat.z.ai) - your AI assistant for:
+ManuOS provides comprehensive manufacturing management:
 
-- **💻 Code Generation** - Generate components, pages, and features instantly
-- **🎨 UI Development** - Create beautiful interfaces with AI assistance  
-- **🔧 Bug Fixing** - Identify and resolve issues with intelligent suggestions
-- **📝 Documentation** - Auto-generate comprehensive documentation
-- **🚀 Optimization** - Performance improvements and best practices
+### 📅 Production Planning
+- **Gantt Charts** - Visual timeline with hierarchy (Order → MO → Jobsheet → Task)
+- **Kanban Boards** - Drag-and-drop task management by status
+- **Resource Allocation** - Machine and technician assignment
+- **Timeline View** - Week/Month views with expandable hierarchy
 
-Ready to build something amazing? Start chatting with Z.ai at [chat.z.ai](https://chat.z.ai) and experience the future of AI-powered development!
+### 🏗️ Order Management
+- **Customer Orders** - Track from order to delivery
+- **Manufacturing Orders** - Break down orders into production batches
+- **Jobsheets** - Detailed work instructions for each operation
+- **Task Tracking** - Individual machining tasks with progress
+
+### 🔧 Machine Management
+- **Machine Registry** - Complete machine database with specifications
+- **Status Tracking** - Real-time machine status (Idle, Running, Maintenance)
+- **Breakdown Management** - Report and track machine breakdowns
+- **Maintenance Scheduling** - Plan preventive maintenance
+
+### 📦 Inventory Management
+- **Material Tracking** - Raw materials, WIP, and finished goods
+- **Stock Levels** - Real-time quantity tracking
+- **Low Stock Alerts** - Automatic notifications for reorder points
+- **Location Management** - Warehouse and shelf tracking
+
+### 👥 User Management
+- **Role-based Access** - Admin, PPIC, Manager, Technician, Warehouse
+- **User Profiles** - Individual settings and preferences
+- **Time Tracking** - Clock in/out for tasks
+- **Performance Metrics** - Individual and team efficiency
+
+### 📊 Reports & Analytics
+- **Production Reports** - Order completion rates
+- **Efficiency Reports** - Machine and labor utilization
+- **Breakdown Reports** - Downtime analysis
+- **Inventory Reports** - Stock levels and trends
 
 ## 📁 Project Structure
 
 ```
 src/
 ├── app/                 # Next.js App Router pages
+│   ├── api/            # API routes
+│   ├── dashboard/      # Dashboard page
+│   ├── orders/         # Order management
+│   ├── planning/       # Planning (Gantt, Kanban)
+│   ├── production/     # Production execution
+│   ├── machines/       # Machine management
+│   ├── inventory/      # Inventory management
+│   └── reports/        # Reports and analytics
 ├── components/          # Reusable React components
-│   └── ui/             # shadcn/ui components
+│   ├── ui/             # shadcn/ui components
+│   └── layout/         # Layout components (sidebar, etc.)
 ├── hooks/              # Custom React hooks
-└── lib/                # Utility functions and configurations
+├── lib/                # Utility functions and configurations
+└── stores/             # Zustand state stores
 ```
 
-## 🎨 Available Features & Components
+## 🎨 Key Features
 
-This scaffold includes a comprehensive set of modern web development tools:
+### 📅 Gantt Chart
+- **4-Level Hierarchy** - Order → MO → Jobsheet → Task
+- **Visual Timeline** - Actual duration bars based on dates
+- **Expand/Collapse** - Drill down to any level
+- **Today Marker** - See current position in timeline
+- **Progress Tracking** - Visual progress on each bar
+- **Status Colors** - Completed (green), Delayed (red), Running (pulsing)
 
-### 🧩 UI Components (shadcn/ui)
-- **Layout**: Card, Separator, Aspect Ratio, Resizable Panels
-- **Forms**: Input, Textarea, Select, Checkbox, Radio Group, Switch
-- **Feedback**: Alert, Toast (Sonner), Progress, Skeleton
-- **Navigation**: Breadcrumb, Menubar, Navigation Menu, Pagination
-- **Overlay**: Dialog, Sheet, Popover, Tooltip, Hover Card
-- **Data Display**: Badge, Avatar, Calendar
+### 🎯 Kanban Board
+- **7 Status Columns** - Pending, Assigned, Running, Paused, On Hold, Completed, Cancelled
+- **Drag & Drop** - Move tasks between statuses
+- **Filters** - Filter by machine, technician, or status
+- **Progress Bars** - Visual progress on each card
+- **Real-time Updates** - Live status synchronization
 
-### 📊 Advanced Data Features
-- **Tables**: Powerful data tables with sorting, filtering, pagination (TanStack Table)
-- **Charts**: Beautiful visualizations with Recharts
-- **Forms**: Type-safe forms with React Hook Form + Zod validation
+### 🔧 Production Tracking
+- **Running Tasks** - See active production in real-time
+- **Machine Assignment** - Which machine is working on what
+- **Technician Assignment** - Who is working on each task
+- **Time Tracking** - Planned vs actual hours
+- **Breakdown Alerts** - Immediate notification of machine issues
 
-### 🎨 Interactive Features
-- **Animations**: Smooth micro-interactions with Framer Motion
-- **Drag & Drop**: Modern drag-and-drop functionality with DND Kit
-- **Theme Switching**: Built-in dark/light mode support
+### 📦 Inventory Control
+- **Stock Levels** - Real-time quantity tracking
+- **Categories** - Raw materials, Tools, WIP, Finished goods
+- **Location Tracking** - Warehouse and shelf locations
+- **Batch Tracking** - Trace materials by batch number
+- **Low Stock Alerts** - Automatic warnings for reorder points
 
-### 🔐 Backend Integration
-- **Authentication**: Ready-to-use auth flows with NextAuth.js
-- **Database**: Type-safe database operations with Prisma
-- **API Client**: HTTP requests with Fetch + TanStack Query
-- **State Management**: Simple and scalable with Zustand
+## 🔐 Demo Credentials
 
-### 🌍 Production Features
-- **Internationalization**: Multi-language support with Next Intl
-- **Image Optimization**: Automatic image processing with Sharp
-- **Type Safety**: End-to-end TypeScript with Zod validation
-- **Essential Hooks**: 100+ useful React hooks with ReactUse for common patterns
+For demonstration purposes, use these credentials:
 
-## 🤝 Get Started with Z.ai
+| Role | Email | Password |
+|------|-------|----------|
+| Admin | admin@ypti.com | demo123 |
+| PPIC | ppic@ypti.com | demo123 |
+| Manager | manager@ypti.com | demo123 |
+| Technician | tech1@ypti.com | demo123 |
 
-1. **Clone this scaffold** to jumpstart your project
-2. **Visit [chat.z.ai](https://chat.z.ai)** to access your AI coding assistant
-3. **Start building** with intelligent code generation and assistance
-4. **Deploy with confidence** using the production-ready setup
+## 🌍 Deployment
+
+ManuOS is production-ready and can be deployed anywhere Next.js is supported:
+
+```bash
+# Build for production
+bun run build
+
+# Start production server
+bun start
+```
+
+### Docker Deployment
+```bash
+docker build -t manuos .
+docker run -p 3000:3000 manuos
+```
+
+## 🤝 Contributing
+
+ManuOS is built for the manufacturing community. Contributions, issues, and feature requests are welcome!
+
+## 📄 License
+
+Built with ❤️ for the manufacturing industry. 
 
 ---
 
-Built with ❤️ for the developer community. Supercharged by [Z.ai](https://chat.z.ai) 🚀
+**ManuOS** - Manufacturing Operating System 🏭

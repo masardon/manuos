@@ -611,35 +611,36 @@ export default function JobsheetDetailPage() {
                       {/* Proceed Button - Only for uncompleted tasks */}
                       {task.status !== 'COMPLETED' && (
                         <div className="mt-3">
-                          <Button
-                            className={`w-full h-12 ${
-                              task.clockedInAt && !task.clockedOutAt && task.status !== 'PAUSED'
-                                ? 'bg-red-600 hover:bg-red-700'      // Clock Out - Red
-                                : task.status === 'PAUSED'
-                                  ? 'bg-blue-600 hover:bg-blue-700'  // Resume - Blue
-                                  : 'bg-emerald-600 hover:bg-emerald-700'  // Clock In - Green
-                            }`}
-                            onClick={() => router.push('/shop-floor')}
-                          >
-                            {task.clockedInAt && !task.clockedOutAt ? (
-                              task.status === 'PAUSED' ? (
-                                <>
-                                  <Play className="h-5 w-5 mr-2" />
-                                  Resume
-                                </>
-                              ) : (
-                                <>
-                                  <Square className="h-5 w-5 mr-2" />
-                                  Clock Out
-                                </>
-                              )
-                            ) : (
-                              <>
-                                <Play className="h-5 w-5 mr-2" />
-                                Clock In
-                              </>
-                            )}
-                          </Button>
+                          {task.clockedInAt && !task.clockedOutAt && task.status === 'PAUSED' ? (
+                            // Resume Button - Blue outline style (matches Shop Floor)
+                            <Button
+                              className="w-full h-12 bg-blue-100 border-blue-300 text-blue-700 hover:bg-blue-200 hover:text-blue-800"
+                              variant="outline"
+                              onClick={() => router.push('/shop-floor')}
+                            >
+                              <Play className="h-5 w-5 mr-2" />
+                              Resume
+                            </Button>
+                          ) : task.clockedInAt && !task.clockedOutAt ? (
+                            // Clock Out Button - Red solid style (matches Shop Floor)
+                            <Button
+                              className="w-full h-12 bg-red-600 hover:bg-red-700 hover:text-white"
+                              variant="destructive"
+                              onClick={() => router.push('/shop-floor')}
+                            >
+                              <Square className="h-5 w-5 mr-2" />
+                              Clock Out
+                            </Button>
+                          ) : (
+                            // Clock In Button - Green solid style (matches Shop Floor)
+                            <Button
+                              className="w-full h-12 bg-emerald-600 hover:bg-emerald-700"
+                              onClick={() => router.push('/shop-floor')}
+                            >
+                              <Play className="h-5 w-5 mr-2" />
+                              Clock In
+                            </Button>
+                          )}
                         </div>
                       )}
 

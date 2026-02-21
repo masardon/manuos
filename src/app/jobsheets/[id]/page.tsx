@@ -288,6 +288,40 @@ export default function JobsheetDetailPage() {
     })
   }
 
+  // Get actual start date from earliest clocked-in task
+  const getActualStartDate = () => {
+    const clockedTasks = jobsheet.machiningTasks.filter(t => t.clockedInAt)
+    if (clockedTasks.length === 0) return null
+    
+    const earliestTask = clockedTasks.reduce((earliest, current) => {
+      return new Date(current.clockedInAt!) < new Date(earliest.clockedInAt!) ? current : earliest
+    })
+    
+    return earliestTask.clockedInAt
+  }
+
+  // Get actual end date - only if ALL tasks are completed
+  const getActualEndDate = () => {
+    // Check if all tasks are completed
+    const allCompleted = jobsheet.machiningTasks.every(t => t.status === 'COMPLETED')
+    if (!allCompleted) return null
+    
+    // Get the latest clocked-out time from all tasks
+    const tasksWithEndTime = jobsheet.machiningTasks.filter(t => t.clockedOutAt)
+    if (tasksWithEndTime.length === 0) return null
+    
+    const latestTask = tasksWithEndTime.reduce((latest, current) => {
+      return new Date(current.clockedOutAt!) > new Date(latest.clockedOutAt!) ? current : latest
+    })
+    
+    return latestTask.clockedOutAt
+  }
+
+  // Check if task can be edited/deleted (never started)
+  const canEditTask = (task: Task) => {
+    return !task.clockedInAt && task.status !== 'COMPLETED'
+  }
+
   if (loading) {
     return (
       <AppLayout title="Jobsheet Details">
@@ -463,14 +497,14 @@ export default function JobsheetDetailPage() {
                   <Clock className="h-3 w-3" />
                   Actual Start
                 </div>
-                <div className="font-medium mt-1">{formatDateTime(jobsheet.actualStartDate)}</div>
+                <div className="font-medium mt-1">{formatDateTime(getActualStartDate())}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground flex items-center gap-1">
                   <CheckCircle className="h-3 w-3" />
                   Actual End
                 </div>
-                <div className="font-medium mt-1">{formatDateTime(jobsheet.actualEndDate)}</div>
+                <div className="font-medium mt-1">{formatDateTime(getActualEndDate())}</div>
               </div>
             </div>
           </CardContent>
@@ -507,16 +541,18 @@ export default function JobsheetDetailPage() {
                             size="icon"
                             className="h-8 w-8"
                             onClick={() => handleEditTask(task)}
+                            disabled={!canEditTask(task)}
                           >
-                            <Edit className="h-4 w-4" />
+                            <Edit className={`h-4 w-4 ${!canEditTask(task) ? 'text-muted-foreground' : ''}`} />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-destructive hover:text-destructive"
                             onClick={() => handleDeleteTask(task.id, task.taskNumber)}
+                            disabled={!canEditTask(task)}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className={`h-4 w-4 ${!canEditTask(task) ? 'text-muted-foreground' : ''}`} />
                           </Button>
                           <div className={`w-2 h-2 rounded-full ${getTaskStatusColor(task.status)}`} />
                           <Badge variant="outline">{task.status.replace(/_/g, ' ')}</Badge>

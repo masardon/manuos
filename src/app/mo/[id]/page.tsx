@@ -6,20 +6,37 @@ import { AppLayout } from '@/components/layout/app-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
+import { Progress } from '@/components/ui/progress'
+import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
 import {
   ArrowLeft,
-  Plus,
-  Trash2,
+  FileText,
   Wrench,
   User,
   Clock,
   Calendar,
-  Settings,
+  CheckCircle,
+  AlertCircle,
+  RefreshCw,
+  Kanban,
+  Store,
+  Plus,
+  Trash2,
+  Edit,
 } from 'lucide-react'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -27,54 +44,65 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 
-interface ManufacturingOrder {
+interface Task {
   id: string
-  moNumber: string
+  taskNumber: string
   name: string
+  description: string | null
   status: string
-  plannedStartDate: string
-  plannedEndDate: string
   progressPercent: number
-  order: {
-    orderNumber: string
-    customerName: string
-  }
+  plannedHours: number | null
+  actualHours: number | null
+  clockedInAt: string | null
+  clockedOutAt: string | null
+  machine?: {
+    id: string
+    code: string
+    name: string
+    type: string | null
+  } | null
+  assignedUser?: {
+    id: string
+    name: string | null
+    email: string
+  } | null
 }
 
 interface Jobsheet {
   id: string
   jsNumber: string
   name: string
+  description: string | null
   status: string
+  progressPercent: number
   plannedStartDate: string
   plannedEndDate: string
-  progressPercent: number
+  actualStartDate: string | null
+  actualEndDate: string | null
+  drawingUrl: string | null
   machiningTasks: Task[]
 }
 
-interface Task {
+interface ManufacturingOrder {
   id: string
-  taskNumber: string
+  moNumber: string
   name: string
+  description: string | null
   status: string
-  plannedHours: number
   progressPercent: number
-  machine?: { name: string } | null
-  assignedUser?: { name: string } | null
-}
-
-interface Machine {
-  id: string
-  name: string
-  code: string
-}
-
-interface User {
-  id: string
-  name: string
-  email: string
+  plannedStartDate: string
+  plannedEndDate: string
+  actualStartDate: string | null
+  actualEndDate: string | null
+  order: {
+    id: string
+    orderNumber: string
+    customerName: string
+    status: string
+    progressPercent: number
+  }
+  jobsheets: Jobsheet[]
 }
 
 export default function MODetailPage() {
@@ -83,62 +111,46 @@ export default function MODetailPage() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [mo, setMo] = useState<ManufacturingOrder | null>(null)
-  const [jobsheets, setJobsheets] = useState<Jobsheet[]>([])
-  const [machines, setMachines] = useState<Machine[]>([])
-  const [users, setUsers] = useState<User[]>([])
-  const [newJobsheet, setNewJobsheet] = useState({
+  const [machines, setMachines] = useState<any[]>([])
+  const [users, setUsers] = useState<any[]>([])
+  
+  // Jobsheet dialog state
+  const [isJobsheetDialogOpen, setIsJobsheetDialogOpen] = useState(false)
+  const [editingJobsheet, setEditingJobsheet] = useState<Jobsheet | null>(null)
+  const [jobsheetForm, setJobsheetForm] = useState({
     jsNumber: '',
     name: '',
+    description: '',
     plannedStartDate: '',
     plannedEndDate: '',
   })
-  const [newTask, setNewTask] = useState<{ [key: string]: any }>({})
-  const [activeJobsheetId, setActiveJobsheetId] = useState<string | null>(null)
-  const [isJobsheetDialogOpen, setIsJobsheetDialogOpen] = useState(false)
-  const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false)
 
   useEffect(() => {
-    fetchMODetails()
+    fetchMO()
     fetchMachines()
     fetchUsers()
   }, [params.id])
 
-  const fetchMODetails = async () => {
+  const fetchMO = async () => {
     try {
-      // Fetch all orders to find the MO
-      const ordersRes = await fetch('/api/orders')
-      if (ordersRes.ok) {
-        const ordersData = await ordersRes.json()
-        
-        // Find the MO across all orders
-        let foundMO = null
-        let foundOrder = null
-        
-        for (const order of ordersData.orders || []) {
-          const mo = order.manufacturingOrders?.find((m: any) => m.id === params.id)
-          if (mo) {
-            foundMO = mo
-            foundOrder = order
-            break
-          }
-        }
-        
-        if (foundMO && foundOrder) {
-          setMo({
-            ...foundMO,
-            order: foundOrder,
-          })
-        }
-      }
-
-      // Fetch jobsheets for this MO
-      const jsRes = await fetch(`/api/mo/${params.id}/jobsheets`)
-      if (jsRes.ok) {
-        const jsData = await jsRes.json()
-        setJobsheets(jsData.jobsheets || [])
+      const response = await fetch(`/api/mo/${params.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        setMo(data.mo)
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'MO not found',
+        })
       }
     } catch (error) {
-      console.error('Error fetching MO details:', error)
+      console.error('Error fetching MO:', error)
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to load MO details',
+      })
     } finally {
       setLoading(false)
     }
@@ -146,9 +158,9 @@ export default function MODetailPage() {
 
   const fetchMachines = async () => {
     try {
-      const res = await fetch('/api/machines')
-      if (res.ok) {
-        const data = await res.json()
+      const response = await fetch('/api/machines')
+      if (response.ok) {
+        const data = await response.json()
         setMachines(data.machines || [])
       }
     } catch (error) {
@@ -158,9 +170,9 @@ export default function MODetailPage() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users')
-      if (res.ok) {
-        const data = await res.json()
+      const response = await fetch('/api/users')
+      if (response.ok) {
+        const data = await response.json()
         setUsers(data.users || [])
       }
     } catch (error) {
@@ -168,114 +180,145 @@ export default function MODetailPage() {
     }
   }
 
-  const handleAddJobsheet = async () => {
-    if (!newJobsheet.jsNumber || !newJobsheet.name) {
-      toast({
-        variant: 'destructive',
-        title: 'Missing fields',
-        description: 'Please fill in all jobsheet fields',
-      })
-      return
-    }
+  const handleAddJobsheet = () => {
+    setEditingJobsheet(null)
+    setJobsheetForm({
+      jsNumber: '',
+      name: '',
+      description: '',
+      plannedStartDate: '',
+      plannedEndDate: '',
+    })
+    setIsJobsheetDialogOpen(true)
+  }
+
+  const handleEditJobsheet = (jobsheet: Jobsheet) => {
+    setEditingJobsheet(jobsheet)
+    setJobsheetForm({
+      jsNumber: jobsheet.jsNumber,
+      name: jobsheet.name,
+      description: jobsheet.description || '',
+      plannedStartDate: jobsheet.plannedStartDate,
+      plannedEndDate: jobsheet.plannedEndDate,
+    })
+    setIsJobsheetDialogOpen(true)
+  }
+
+  const handleDeleteJobsheet = async (jobsheetId: string, jsNumber: string) => {
+    if (!confirm(`Are you sure you want to delete jobsheet ${jsNumber}?`)) return
 
     try {
-      const res = await fetch(`/api/mo/${params.id}/jobsheets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...newJobsheet,
-          description: `Jobsheet for ${mo?.moNumber}`,
-        }),
+      const response = await fetch(`/api/jobsheet/${jobsheetId}`, {
+        method: 'DELETE',
       })
 
-      if (res.ok) {
-        toast({ title: 'Jobsheet created' })
-        setNewJobsheet({ jsNumber: '', name: '', plannedStartDate: '', plannedEndDate: '' })
+      if (response.ok) {
+        toast({
+          title: 'Success',
+          description: 'Jobsheet deleted successfully',
+        })
+        await fetchMO()
+      } else {
+        throw new Error('Failed to delete jobsheet')
+      }
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to delete jobsheet',
+      })
+    }
+  }
+
+  const handleSaveJobsheet = async () => {
+    try {
+      const url = editingJobsheet
+        ? `/api/jobsheet/${editingJobsheet.id}`
+        : `/api/mo/${params.id}/jobsheets`
+
+      const response = await fetch(url, {
+        method: editingJobsheet ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(jobsheetForm),
+      })
+
+      if (response.ok) {
+        toast({
+          title: 'Success',
+          description: editingJobsheet ? 'Jobsheet updated successfully' : 'Jobsheet created successfully',
+        })
         setIsJobsheetDialogOpen(false)
-        fetchMODetails()
+        await fetchMO()
+      } else {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to save jobsheet')
       }
-    } catch (error) {
+    } catch (error: any) {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Failed to create jobsheet',
+        description: error.message || 'Failed to save jobsheet',
       })
     }
   }
 
-  const handleAddTask = async (jobsheetId: string) => {
-    const task = newTask[jobsheetId] || {}
-    if (!task.taskNumber || !task.name || !task.plannedHours) {
-      toast({
-        variant: 'destructive',
-        title: 'Missing fields',
-        description: 'Please fill in all task fields',
-      })
-      return
+  const getStatusBadge = (status: string) => {
+    const config: Record<string, string> = {
+      DRAFT: 'bg-gray-100 text-gray-800',
+      PLANNED: 'bg-blue-100 text-blue-800',
+      IN_PROGRESS: 'bg-orange-100 text-orange-800',
+      COMPLETED: 'bg-green-100 text-green-800',
+      CANCELLED: 'bg-red-100 text-red-800',
     }
-
-    try {
-      const res = await fetch(`/api/jobsheet/${jobsheetId}/tasks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(task),
-      })
-
-      if (res.ok) {
-        toast({ title: 'Task created' })
-        setNewTask({ ...newTask, [jobsheetId]: {} })
-        setIsTaskDialogOpen(false)
-        fetchMODetails()
-      }
-    } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to create task',
-      })
-    }
+    return <Badge className={config[status] || 'bg-gray-100 text-gray-800'}>{status.replace(/_/g, ' ')}</Badge>
   }
 
-  const handleDeleteJobsheet = async (jsId: string) => {
-    if (!confirm('Are you sure? This will also delete all tasks in this jobsheet.')) return
-
-    try {
-      const res = await fetch(`/api/mo/${params.id}/jobsheets?jsId=${jsId}`, {
-        method: 'DELETE',
-      })
-
-      if (res.ok) {
-        toast({ title: 'Jobsheet deleted' })
-        fetchMODetails()
-      }
-    } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to delete jobsheet',
-      })
-    }
+  const getTaskStatusColor = (status: string) => {
+    if (status === 'COMPLETED') return 'bg-green-500'
+    if (status === 'RUNNING') return 'bg-emerald-500'
+    if (status === 'PAUSED') return 'bg-amber-500'
+    return 'bg-slate-400'
   }
 
-  const handleDeleteTask = async (jsId: string, taskId: string) => {
-    if (!confirm('Are you sure you want to delete this task?')) return
+  const formatDateTime = (dateTimeString: string | null) => {
+    if (!dateTimeString) return '-'
+    return new Date(dateTimeString).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    })
+  }
 
-    try {
-      const res = await fetch(`/api/jobsheet/${jsId}/tasks?taskId=${taskId}`, {
-        method: 'DELETE',
-      })
+  // Get actual start date from earliest jobsheet
+  const getActualStartDate = () => {
+    const jobsheetsWithStart = mo?.jobsheets.filter(js => js.actualStartDate)
+    if (!jobsheetsWithStart || jobsheetsWithStart.length === 0) return null
+    
+    const earliest = jobsheetsWithStart.reduce((earliest, current) => {
+      return new Date(current.actualStartDate!) < new Date(earliest.actualStartDate!) ? current : earliest
+    })
+    
+    return earliest.actualStartDate
+  }
 
-      if (res.ok) {
-        toast({ title: 'Task deleted' })
-        fetchMODetails()
-      }
-    } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to delete task',
-      })
-    }
+  // Get actual end date - only if ALL jobsheets are completed
+  const getActualEndDate = () => {
+    if (!mo) return null
+    
+    const allCompleted = mo.jobsheets.every(js => js.status === 'COMPLETED')
+    if (!allCompleted) return null
+    
+    const jobsheetsWithEnd = mo.jobsheets.filter(js => js.actualEndDate)
+    if (jobsheetsWithEnd.length === 0) return null
+    
+    const latest = jobsheetsWithEnd.reduce((latest, current) => {
+      return new Date(current.actualEndDate!) > new Date(latest.actualEndDate!) ? current : latest
+    })
+    
+    return latest.actualEndDate
   }
 
   if (loading) {
@@ -299,7 +342,7 @@ export default function MODetailPage() {
             <p className="text-muted-foreground mb-4">Manufacturing Order not found</p>
             <Button onClick={() => router.push('/mo')}>
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to MO List
+              Back to MOs
             </Button>
           </div>
         </div>
@@ -308,294 +351,314 @@ export default function MODetailPage() {
   }
 
   return (
-    <AppLayout title="Manufacturing Order Details">
+    <AppLayout title="MO Details">
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="outline" size="icon" onClick={() => router.push('/orders')}>
+            <Button variant="outline" size="icon" onClick={() => router.push('/mo')}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 mb-1">
                 <Badge variant="outline">{mo.moNumber}</Badge>
-                <h1 className="text-3xl font-bold">{mo.name}</h1>
+                {getStatusBadge(mo.status)}
               </div>
-              <p className="text-muted-foreground mt-1">
-                {mo.order?.orderNumber} - {mo.order?.customerName}
-              </p>
+              <h1 className="text-3xl font-bold">{mo.name}</h1>
             </div>
           </div>
-          <Dialog open={isJobsheetDialogOpen} onOpenChange={setIsJobsheetDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Jobsheet
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add New Jobsheet</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <Label>JS Number</Label>
-                  <Input
-                    value={newJobsheet.jsNumber}
-                    onChange={(e) => setNewJobsheet({ ...newJobsheet, jsNumber: e.target.value })}
-                    placeholder={`JS-${mo.moNumber}-01`}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Name</Label>
-                  <Input
-                    value={newJobsheet.name}
-                    onChange={(e) => setNewJobsheet({ ...newJobsheet, name: e.target.value })}
-                    placeholder="Operation name"
-                  />
-                </div>
-                <div className="grid gap-4 grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Start Date</Label>
-                    <Input
-                      type="date"
-                      value={newJobsheet.plannedStartDate}
-                      onChange={(e) => setNewJobsheet({ ...newJobsheet, plannedStartDate: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>End Date</Label>
-                    <Input
-                      type="date"
-                      value={newJobsheet.plannedEndDate}
-                      onChange={(e) => setNewJobsheet({ ...newJobsheet, plannedEndDate: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <Button onClick={handleAddJobsheet} className="w-full">
-                  Create Jobsheet
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <div className="flex items-center gap-2">
+            {/* Shortcuts */}
+            <Button variant="outline" size="sm" onClick={() => router.push('/planning/kanban')}>
+              <Kanban className="h-4 w-4 mr-2" />
+              Kanban
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => router.push('/shop-floor')}>
+              <Store className="h-4 w-4 mr-2" />
+              Shop Floor
+            </Button>
+            <Separator orientation="vertical" className="h-6" />
+            <Button variant="outline" onClick={fetchMO} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button onClick={handleAddJobsheet}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Jobsheet
+            </Button>
+          </div>
         </div>
 
-        {/* MO Info */}
+        {/* Progress Overview */}
         <Card>
           <CardHeader>
-            <CardTitle>Manufacturing Order Summary</CardTitle>
+            <CardTitle>Progress Overview</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-4">
-              <div>
-                <Label className="text-muted-foreground">Status</Label>
-                <Badge className="mt-1">{mo.status}</Badge>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Overall Progress</span>
+                <span className="text-lg font-bold">{mo.progressPercent}%</span>
               </div>
-              <div>
-                <Label className="text-muted-foreground">Progress</Label>
-                <p className="font-medium mt-1">{mo.progressPercent}%</p>
-              </div>
-              <div>
-                <Label className="text-muted-foreground">Start Date</Label>
-                <p className="font-medium mt-1">{new Date(mo.plannedStartDate).toLocaleDateString()}</p>
-              </div>
-              <div>
-                <Label className="text-muted-foreground">End Date</Label>
-                <p className="font-medium mt-1">{new Date(mo.plannedEndDate).toLocaleDateString()}</p>
+              <Progress value={mo.progressPercent} className="h-3" />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                <div>
+                  <div className="text-xs text-muted-foreground">Status</div>
+                  <div className="font-medium">{mo.status.replace(/_/g, ' ')}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Jobsheets</div>
+                  <div className="font-medium">{mo.jobsheets.length} total</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Completed</div>
+                  <div className="font-medium">{mo.jobsheets.filter(js => js.status === 'COMPLETED').length}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">In Progress</div>
+                  <div className="font-medium">{mo.jobsheets.filter(js => js.status === 'IN_PROGRESS').length}</div>
+                </div>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Jobsheets */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Jobsheets ({jobsheets.length})</h2>
-          </div>
+        {/* Order Hierarchy */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Order Hierarchy</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                <FileText className="h-5 w-5 text-muted-foreground" />
+                <div className="flex-1">
+                  <div className="text-xs text-muted-foreground">Order</div>
+                  <div className="font-medium">{mo.order.orderNumber}</div>
+                  <div className="text-sm text-muted-foreground">{mo.order.customerName}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground">Progress</div>
+                  <div className="font-medium">{mo.order.progressPercent}%</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                <Wrench className="h-5 w-5 text-primary" />
+                <div className="flex-1">
+                  <div className="text-xs text-muted-foreground">MO (Current)</div>
+                  <div className="font-medium">{mo.moNumber}</div>
+                  <div className="text-sm text-muted-foreground">{mo.name}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground">Progress</div>
+                  <div className="font-medium">{mo.progressPercent}%</div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-          {jobsheets.length === 0 ? (
-            <Card>
-              <CardContent className="text-center py-12 text-muted-foreground">
-                <Wrench className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No jobsheets yet. Add the first jobsheet to break down this MO.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            jobsheets.map((js, jsIndex) => (
-              <Card key={js.id}>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">{js.jsNumber}</Badge>
-                        <CardTitle>{js.name}</CardTitle>
-                      </div>
-                      <CardDescription>
-                        {new Date(js.plannedStartDate).toLocaleDateString()} - {new Date(js.plannedEndDate).toLocaleDateString()}
-                        {' • '}{js.machiningTasks.length} task(s)
-                      </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Dialog open={isTaskDialogOpen && activeJobsheetId === js.id} onOpenChange={(open) => {
-                        setIsTaskDialogOpen(open)
-                        if (!open) setActiveJobsheetId(null)
-                      }}>
-                        <DialogTrigger asChild>
-                          <Button size="sm" onClick={() => setActiveJobsheetId(js.id)}>
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add Task
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Add Task to {js.jsNumber}</DialogTitle>
-                          </DialogHeader>
-                          <div className="space-y-4 pt-4">
-                            <div className="space-y-2">
-                              <Label>Task Number</Label>
-                              <Input
-                                value={newTask[js.id]?.taskNumber || ''}
-                                onChange={(e) => setNewTask({ ...newTask, [js.id]: { ...newTask[js.id], taskNumber: e.target.value } })}
-                                placeholder={`${js.jsNumber}-T01`}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Task Name</Label>
-                              <Input
-                                value={newTask[js.id]?.name || ''}
-                                onChange={(e) => setNewTask({ ...newTask, [js.id]: { ...newTask[js.id], name: e.target.value } })}
-                                placeholder="Operation name"
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Planned Hours</Label>
-                              <Input
-                                type="number"
-                                step="0.5"
-                                value={newTask[js.id]?.plannedHours || ''}
-                                onChange={(e) => setNewTask({ ...newTask, [js.id]: { ...newTask[js.id], plannedHours: e.target.value } })}
-                                placeholder="4"
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Machine</Label>
-                              <Select
-                                value={newTask[js.id]?.machineId || ''}
-                                onValueChange={(value) => setNewTask({ ...newTask, [js.id]: { ...newTask[js.id], machineId: value } })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select machine" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {machines.map((m) => (
-                                    <SelectItem key={m.id} value={m.id}>{m.name} ({m.code})</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Technician</Label>
-                              <Select
-                                value={newTask[js.id]?.assignedTo || ''}
-                                onValueChange={(value) => setNewTask({ ...newTask, [js.id]: { ...newTask[js.id], assignedTo: value } })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select technician" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {users.map((u) => (
-                                    <SelectItem key={u.id} value={u.id}>{u.name || u.email}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <Button onClick={() => handleAddTask(js.id)} className="w-full">
-                              Create Task
-                            </Button>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteJobsheet(js.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {js.machiningTasks.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground text-sm">
-                      No tasks yet. Click "Add Task" to break down this jobsheet.
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {js.machiningTasks.map((task, taskIndex) => (
-                        <div
-                          key={task.id}
-                          className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50"
-                        >
-                          <div className="flex items-center gap-3 flex-1">
-                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-semibold text-sm">
-                              {taskIndex + 1}
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <Badge variant="secondary" className="text-xs">{task.taskNumber}</Badge>
-                                <span className="font-medium text-sm">{task.name}</span>
-                              </div>
-                              <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
-                                {task.machine && (
-                                  <span className="flex items-center gap-1">
-                                    <Wrench className="h-3 w-3" />
-                                    {task.machine.name}
-                                  </span>
-                                )}
-                                {task.assignedUser && (
-                                  <span className="flex items-center gap-1">
-                                    <User className="h-3 w-3" />
-                                    {task.assignedUser.name}
-                                  </span>
-                                )}
-                                <span className="flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  {task.plannedHours}h
-                                </span>
-                                <Badge variant="outline" className="text-xs">{task.progressPercent}%</Badge>
-                              </div>
-                            </div>
-                          </div>
+        {/* Timeline */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Timeline</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  Planned Start
+                </div>
+                <div className="font-medium mt-1">{formatDateTime(mo.plannedStartDate)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  Planned End
+                </div>
+                <div className="font-medium mt-1">{formatDateTime(mo.plannedEndDate)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  Actual Start
+                </div>
+                <div className="font-medium mt-1">{formatDateTime(getActualStartDate())}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                  <CheckCircle className="h-3 w-3" />
+                  Actual End
+                </div>
+                <div className="font-medium mt-1">{formatDateTime(getActualEndDate())}</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Jobsheets List */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Jobsheets</CardTitle>
+              <Badge variant="secondary">{mo.jobsheets.length} jobsheets</Badge>
+            </div>
+            <CardDescription>Production jobsheets and machining tasks</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {mo.jobsheets.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No jobsheets defined for this MO</p>
+              </div>
+            ) : (
+              <ScrollArea className="h-[600px]">
+                <div className="space-y-4">
+                  {mo.jobsheets.map((jobsheet) => (
+                    <div key={jobsheet.id} className="border rounded-lg p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">{jobsheet.jsNumber}</Badge>
+                          <span className="font-semibold">{jobsheet.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleDeleteTask(js.id, task.id)}
+                            className="h-8 w-8"
+                            onClick={() => router.push(`/jobsheets/${jobsheet.id}`)}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <FileText className="h-4 w-4" />
                           </Button>
+                          <div className={`w-2 h-2 rounded-full ${getTaskStatusColor(jobsheet.status)}`} />
+                          <Badge variant="outline">{jobsheet.status.replace(/_/g, ' ')}</Badge>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
+                      </div>
 
-        {/* Info */}
-        <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900">
-          <CardContent className="pt-6">
-            <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">Production Breakdown Structure</h3>
-            <ol className="space-y-1 text-sm text-blue-800 dark:text-blue-200">
-              <li>1. <strong>Order</strong> → Customer order ({mo.order?.orderNumber})</li>
-              <li>2. <strong>Manufacturing Order</strong> → Production batch ({mo.moNumber})</li>
-              <li>3. <strong>Jobsheets</strong> → Operations ({jobsheets.length} created)</li>
-              <li>4. <strong>Tasks</strong> → Individual machining operations ({jobsheets.reduce((sum, js) => sum + js.machiningTasks.length, 0)} created)</li>
-            </ol>
+                      {jobsheet.description && (
+                        <p className="text-sm text-muted-foreground mb-3">{jobsheet.description}</p>
+                      )}
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                        <div>
+                          <div className="text-xs text-muted-foreground">Tasks</div>
+                          <div className="font-medium text-sm">{jobsheet.machiningTasks.length}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Completed</div>
+                          <div className="font-medium text-sm">{jobsheet.machiningTasks.filter(t => t.status === 'COMPLETED').length}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Running</div>
+                          <div className="font-medium text-sm">{jobsheet.machiningTasks.filter(t => t.status === 'RUNNING').length}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Pending</div>
+                          <div className="font-medium text-sm">{jobsheet.machiningTasks.filter(t => t.status === 'PENDING').length}</div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Progress</span>
+                          <span className="font-semibold">{jobsheet.progressPercent}%</span>
+                        </div>
+                        <Progress value={jobsheet.progressPercent} className="h-2" />
+                      </div>
+
+                      <div className="mt-3 pt-3 border-t">
+                        <div className="grid grid-cols-2 gap-3 text-xs">
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <Calendar className="h-3 w-3" />
+                            Start: {formatDateTime(jobsheet.plannedStartDate)}
+                          </div>
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <Calendar className="h-3 w-3" />
+                            End: {formatDateTime(jobsheet.plannedEndDate)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
           </CardContent>
         </Card>
+
+        {/* Jobsheet Dialog */}
+        <Dialog open={isJobsheetDialogOpen} onOpenChange={setIsJobsheetDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                {editingJobsheet ? 'Edit Jobsheet' : 'Add New Jobsheet'}
+              </DialogTitle>
+              <DialogDescription>
+                {editingJobsheet ? 'Update jobsheet details' : 'Create a new jobsheet for this MO'}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="jsNumber">Jobsheet Number *</Label>
+                <Input
+                  id="jsNumber"
+                  value={jobsheetForm.jsNumber}
+                  onChange={(e) => setJobsheetForm({ ...jobsheetForm, jsNumber: e.target.value })}
+                  placeholder="e.g., JS-001"
+                  disabled={!!editingJobsheet}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="jsName">Jobsheet Name *</Label>
+                <Input
+                  id="jsName"
+                  value={jobsheetForm.name}
+                  onChange={(e) => setJobsheetForm({ ...jobsheetForm, name: e.target.value })}
+                  placeholder="e.g., CNC Milling Operation"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="jsDescription">Description</Label>
+                <Textarea
+                  id="jsDescription"
+                  value={jobsheetForm.description}
+                  onChange={(e) => setJobsheetForm({ ...jobsheetForm, description: e.target.value })}
+                  placeholder="Jobsheet description..."
+                  rows={3}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="plannedStart">Planned Start Date</Label>
+                  <Input
+                    id="plannedStart"
+                    type="date"
+                    value={jobsheetForm.plannedStartDate}
+                    onChange={(e) => setJobsheetForm({ ...jobsheetForm, plannedStartDate: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="plannedEnd">Planned End Date</Label>
+                  <Input
+                    id="plannedEnd"
+                    type="date"
+                    value={jobsheetForm.plannedEndDate}
+                    onChange={(e) => setJobsheetForm({ ...jobsheetForm, plannedEndDate: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsJobsheetDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveJobsheet} disabled={!jobsheetForm.jsNumber.trim() || !jobsheetForm.name.trim()}>
+                {editingJobsheet ? 'Update Jobsheet' : 'Create Jobsheet'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AppLayout>
   )

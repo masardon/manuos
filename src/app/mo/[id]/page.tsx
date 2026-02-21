@@ -321,6 +321,13 @@ export default function MODetailPage() {
     return latest.actualEndDate
   }
 
+  // Check if jobsheet can be edited/deleted (no tasks started)
+  const canEditJobsheet = (jobsheet: Jobsheet) => {
+    // Can't edit if any task has been clocked in
+    const hasStartedTasks = jobsheet.machiningTasks.some(t => t.clockedInAt)
+    return !hasStartedTasks
+  }
+
   if (loading) {
     return (
       <AppLayout title="MO Details">
@@ -368,16 +375,6 @@ export default function MODetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* Shortcuts */}
-            <Button variant="outline" size="sm" onClick={() => router.push('/planning/kanban')}>
-              <Kanban className="h-4 w-4 mr-2" />
-              Kanban
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => router.push('/shop-floor')}>
-              <Store className="h-4 w-4 mr-2" />
-              Shop Floor
-            </Button>
-            <Separator orientation="vertical" className="h-6" />
             <Button variant="outline" onClick={fetchMO} disabled={loading}>
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               Refresh
@@ -528,8 +525,29 @@ export default function MODetailPage() {
                             size="icon"
                             className="h-8 w-8"
                             onClick={() => router.push(`/jobsheets/${jobsheet.id}`)}
+                            title="View Jobsheet Details"
                           >
                             <FileText className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleEditJobsheet(jobsheet)}
+                            disabled={!canEditJobsheet(jobsheet)}
+                            title={canEditJobsheet(jobsheet) ? 'Edit Jobsheet' : 'Cannot edit - tasks have started'}
+                          >
+                            <Edit className={`h-4 w-4 ${!canEditJobsheet(jobsheet) ? 'text-muted-foreground' : ''}`} />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteJobsheet(jobsheet.id, jobsheet.jsNumber)}
+                            disabled={!canEditJobsheet(jobsheet)}
+                            title={canEditJobsheet(jobsheet) ? 'Delete Jobsheet' : 'Cannot delete - tasks have started'}
+                          >
+                            <Trash2 className={`h-4 w-4 ${!canEditJobsheet(jobsheet) ? 'text-muted-foreground' : ''}`} />
                           </Button>
                           <div className={`w-2 h-2 rounded-full ${getTaskStatusColor(jobsheet.status)}`} />
                           <Badge variant="outline">{jobsheet.status.replace(/_/g, ' ')}</Badge>

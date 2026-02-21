@@ -38,6 +38,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         jsNumber,
         name,
         description: description || null,
+        drawingUrl: drawingUrl || null,
         status: JobsheetStatus.PREPARING,
         plannedStartDate: plannedStartDate ? new Date(plannedStartDate) : null,
         plannedEndDate: plannedEndDate ? new Date(plannedEndDate) : null,

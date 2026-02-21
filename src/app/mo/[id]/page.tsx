@@ -121,6 +121,7 @@ export default function MODetailPage() {
     jsNumber: '',
     name: '',
     description: '',
+    drawingUrl: '',
     plannedStartDate: '',
     plannedEndDate: '',
   })
@@ -186,6 +187,7 @@ export default function MODetailPage() {
       jsNumber: '',
       name: '',
       description: '',
+      drawingUrl: '',
       plannedStartDate: '',
       plannedEndDate: '',
     })
@@ -198,6 +200,7 @@ export default function MODetailPage() {
       jsNumber: jobsheet.jsNumber,
       name: jobsheet.name,
       description: jobsheet.description || '',
+      drawingUrl: jobsheet.drawingUrl || '',
       plannedStartDate: jobsheet.plannedStartDate,
       plannedEndDate: jobsheet.plannedEndDate,
     })
@@ -239,7 +242,14 @@ export default function MODetailPage() {
       const response = await fetch(url, {
         method: editingJobsheet ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(jobsheetForm),
+        body: JSON.stringify({
+          jsNumber: jobsheetForm.jsNumber,
+          name: jobsheetForm.name,
+          description: jobsheetForm.description,
+          drawingUrl: jobsheetForm.drawingUrl,
+          plannedStartDate: jobsheetForm.plannedStartDate,
+          plannedEndDate: jobsheetForm.plannedEndDate,
+        }),
       })
 
       if (response.ok) {
@@ -292,33 +302,45 @@ export default function MODetailPage() {
     })
   }
 
-  // Get actual start date from earliest jobsheet
+  // Get actual start date from earliest task clocked in across all jobsheets
   const getActualStartDate = () => {
-    const jobsheetsWithStart = mo?.jobsheets.filter(js => js.actualStartDate)
-    if (!jobsheetsWithStart || jobsheetsWithStart.length === 0) return null
+    if (!mo) return null
     
-    const earliest = jobsheetsWithStart.reduce((earliest, current) => {
-      return new Date(current.actualStartDate!) < new Date(earliest.actualStartDate!) ? current : earliest
+    // Get all tasks from all jobsheets that have been clocked in
+    const allTasks = mo.jobsheets.flatMap(js => js.machiningTasks)
+    const clockedTasks = allTasks.filter(t => t.clockedInAt)
+    
+    if (clockedTasks.length === 0) return null
+    
+    // Find the earliest clocked-in task
+    const earliestTask = clockedTasks.reduce((earliest, current) => {
+      return new Date(current.clockedInAt!) < new Date(earliest.clockedInAt!) ? current : earliest
     })
     
-    return earliest.actualStartDate
+    return earliestTask.clockedInAt
   }
 
-  // Get actual end date - only if ALL jobsheets are completed
+  // Get actual end date - only if ALL tasks across all jobsheets are completed
   const getActualEndDate = () => {
     if (!mo) return null
     
-    const allCompleted = mo.jobsheets.every(js => js.status === 'COMPLETED')
+    // Get all tasks from all jobsheets
+    const allTasks = mo.jobsheets.flatMap(js => js.machiningTasks)
+    
+    // Check if ALL tasks are completed
+    const allCompleted = allTasks.every(t => t.status === 'COMPLETED')
     if (!allCompleted) return null
     
-    const jobsheetsWithEnd = mo.jobsheets.filter(js => js.actualEndDate)
-    if (jobsheetsWithEnd.length === 0) return null
+    // Get tasks that have been clocked out
+    const tasksWithEndTime = allTasks.filter(t => t.clockedOutAt)
+    if (tasksWithEndTime.length === 0) return null
     
-    const latest = jobsheetsWithEnd.reduce((latest, current) => {
-      return new Date(current.actualEndDate!) > new Date(latest.actualEndDate!) ? current : latest
+    // Find the latest clocked-out task
+    const latestTask = tasksWithEndTime.reduce((latest, current) => {
+      return new Date(current.clockedOutAt!) > new Date(latest.clockedOutAt!) ? current : latest
     })
     
-    return latest.actualEndDate
+    return latestTask.clockedOutAt
   }
 
   // Check if jobsheet can be edited/deleted (no tasks started)
@@ -645,6 +667,20 @@ export default function MODetailPage() {
                   placeholder="Jobsheet description..."
                   rows={3}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="drawingUrl">Engineering Drawing URL</Label>
+                <Input
+                  id="drawingUrl"
+                  value={jobsheetForm.drawingUrl}
+                  onChange={(e) => setJobsheetForm({ ...jobsheetForm, drawingUrl: e.target.value })}
+                  placeholder="https://example.com/drawing.png"
+                />
+                {jobsheetForm.drawingUrl && (
+                  <div className="text-xs text-muted-foreground">
+                    Preview: <a href={jobsheetForm.drawingUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Open Image</a>
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">

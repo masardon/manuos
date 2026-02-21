@@ -17,6 +17,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         jsNumber: body.jsNumber,
         name: body.name,
         description: body.description,
+        drawingUrl: body.drawingUrl,
         plannedStartDate: body.plannedStartDate ? new Date(body.plannedStartDate) : null,
         plannedEndDate: body.plannedEndDate ? new Date(body.plannedEndDate) : null,
       },

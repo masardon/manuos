@@ -244,9 +244,9 @@ export default function JobsheetsPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => router.push(`/mo/${js.moId}`)}
+                          onClick={() => router.push(`/jobsheets/${js.id}`)}
                         >
-                          View MO
+                          View Details
                         </Button>
                       </TableCell>
                     </TableRow>

@@ -107,9 +107,9 @@ export default function OrdersPage() {
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button onClick={() => router.push('/orders/new')}>
+            <Button onClick={() => router.push('/orders/wizard')}>
               <Plus className="h-4 w-4 mr-2" />
-              New Order
+              New Order (Wizard)
             </Button>
           </div>
         </div>

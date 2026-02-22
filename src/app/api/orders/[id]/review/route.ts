@@ -6,7 +6,7 @@ interface Params {
   params: Promise<{ id: string }>
 }
 
-// POST /api/orders/[id]/approve - Approve order for production
+// POST /api/orders/[id]/review - Submit order for customer review
 export async function POST(request: NextRequest, { params }: Params) {
   try {
     const { id } = await params
@@ -22,30 +22,30 @@ export async function POST(request: NextRequest, { params }: Params) {
       )
     }
 
-    if (order.status !== 'MATERIAL_PREPARATION') {
+    if (order.status !== 'DRAFT') {
       return NextResponse.json(
-        { error: 'Only orders awaiting approval can be approved' },
+        { error: 'Only DRAFT orders can be submitted for review' },
         { status: 400 }
       )
     }
 
-    // Update order status to IN_PRODUCTION
+    // Update order status to MATERIAL_PREPARATION (awaiting customer approval)
     const updatedOrder = await db.order.update({
       where: { id },
       data: {
-        status: OrderStatus.IN_PRODUCTION,
+        status: OrderStatus.MATERIAL_PREPARATION,
       },
     })
 
     return NextResponse.json({
       success: true,
       order: updatedOrder,
-      message: 'Order approved for production',
+      message: 'Order submitted for customer review',
     })
   } catch (error) {
-    console.error('Error approving order:', error)
+    console.error('Error submitting order for review:', error)
     return NextResponse.json(
-      { error: 'Failed to approve order' },
+      { error: 'Failed to submit order for review' },
       { status: 500 }
     )
   }

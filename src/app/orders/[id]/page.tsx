@@ -21,6 +21,7 @@ import {
   Plus,
   Trash2,
   Edit,
+  AlertCircle,
 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -235,6 +236,60 @@ export default function OrderDetailPage() {
     }
   }
 
+  const handleSubmitForReview = async () => {
+    if (!confirm('Submit this order for customer review? The order cannot be edited once submitted.')) return
+
+    try {
+      const response = await fetch(`/api/orders/${params.id}/review`, {
+        method: 'POST',
+      })
+
+      if (response.ok) {
+        toast({
+          title: 'Success',
+          description: 'Order submitted for customer review',
+        })
+        await fetchOrder()
+      } else {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to submit for review')
+      }
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to submit for review',
+      })
+    }
+  }
+
+  const handleApproveOrder = async () => {
+    if (!confirm('Approve this order for production? This action cannot be undone.')) return
+
+    try {
+      const response = await fetch(`/api/orders/${params.id}/approve`, {
+        method: 'POST',
+      })
+
+      if (response.ok) {
+        toast({
+          title: 'Success',
+          description: 'Order approved for production',
+        })
+        await fetchOrder()
+      } else {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to approve order')
+      }
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to approve order',
+      })
+    }
+  }
+
   const getStatusBadge = (status: string) => {
     const config: Record<string, string> = {
       DRAFT: 'bg-gray-100 text-gray-800',
@@ -349,10 +404,16 @@ export default function OrderDetailPage() {
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button onClick={handleAddMO}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add MO
-            </Button>
+            {order.status === 'DRAFT' && (
+              <Button onClick={handleSubmitForReview} size="sm" className="bg-black text-white hover:bg-black/90">
+                Submit for Review
+              </Button>
+            )}
+            {order.status === 'MATERIAL_PREPARATION' && (
+              <Button onClick={handleApproveOrder} size="sm" className="bg-black text-white hover:bg-black/90">
+                Approve for Production
+              </Button>
+            )}
           </div>
         </div>
 
@@ -410,6 +471,19 @@ export default function OrderDetailPage() {
                 <div className="font-medium">{order.customerPhone || '-'}</div>
               </div>
             </div>
+            {order.status === 'MATERIAL_PREPARATION' && (
+              <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5" />
+                  <div>
+                    <div className="font-medium text-blue-900 dark:text-blue-100">Awaiting Customer Approval</div>
+                    <div className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                      This order has been submitted for customer review. Once approved, it will proceed to production.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -457,7 +531,13 @@ export default function OrderDetailPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>Manufacturing Orders</CardTitle>
-              <Badge variant="secondary">{order.manufacturingOrders.length} MOs</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">{order.manufacturingOrders.length} MOs</Badge>
+                <Button onClick={handleAddMO} size="sm" variant="outline">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add MO
+                </Button>
+              </div>
             </div>
             <CardDescription>Production batches and jobsheets</CardDescription>
           </CardHeader>

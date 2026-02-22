@@ -22,6 +22,7 @@ import {
   Trash2,
   Edit,
   AlertCircle,
+  TrendingUp,
 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -400,6 +401,10 @@ export default function OrderDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => router.push(`/orders/${params.id}/gantt`)}>
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Gantt Chart
+            </Button>
             <Button variant="outline" onClick={fetchOrder} disabled={loading}>
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               Refresh

@@ -401,10 +401,6 @@ export default function MODetailPage() {
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button onClick={handleAddJobsheet}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Jobsheet
-            </Button>
           </div>
         </div>
 
@@ -521,7 +517,13 @@ export default function MODetailPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>Jobsheets</CardTitle>
-              <Badge variant="secondary">{mo.jobsheets.length} jobsheets</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">{mo.jobsheets.length} jobsheets</Badge>
+                <Button onClick={handleAddJobsheet} size="sm" variant="outline">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Jobsheet
+                </Button>
+              </div>
             </div>
             <CardDescription>Production jobsheets and machining tasks</CardDescription>
           </CardHeader>

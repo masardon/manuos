@@ -383,10 +383,6 @@ export default function JobsheetDetailPage() {
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button onClick={handleAddTask}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Task
-            </Button>
           </div>
         </div>
 
@@ -515,7 +511,13 @@ export default function JobsheetDetailPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>Machining Tasks</CardTitle>
-              <Badge variant="secondary">{jobsheet.machiningTasks.length} tasks</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">{jobsheet.machiningTasks.length} tasks</Badge>
+                <Button onClick={handleAddTask} size="sm" variant="outline">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Task
+                </Button>
+              </div>
             </div>
             <CardDescription>Detailed breakdown of machining operations</CardDescription>
           </CardHeader>

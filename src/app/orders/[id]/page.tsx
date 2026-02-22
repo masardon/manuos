@@ -197,10 +197,10 @@ export default function OrderDetailPage() {
     }
   }
 
-  // Check if MO can be edited/deleted (no jobsheets started)
+  // Check if MO can be edited/deleted (only if still in PLANNED status)
   const canEditMO = (mo: ManufacturingOrder) => {
-    // Can't edit if any jobsheet has tasks that have been clocked in
-    return mo.jobsheetsCount === 0
+    // Can only edit/delete if MO is still in PLANNED status
+    return mo.status === 'PLANNED'
   }
 
   const handleSaveMO = async () => {

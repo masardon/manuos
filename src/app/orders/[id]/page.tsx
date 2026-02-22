@@ -18,11 +18,29 @@ import {
   Calendar,
   CheckCircle,
   RefreshCw,
-  Kanban,
-  Store,
   Plus,
+  Trash2,
+  Edit,
 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface ManufacturingOrder {
   id: string
@@ -58,9 +76,24 @@ export default function OrderDetailPage() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [order, setOrder] = useState<Order | null>(null)
+  const [machines, setMachines] = useState<any[]>([])
+  const [users, setUsers] = useState<any[]>([])
+  
+  // MO dialog state
+  const [isMODialogOpen, setIsMODialogOpen] = useState(false)
+  const [editingMO, setEditingMO] = useState<ManufacturingOrder | null>(null)
+  const [moForm, setMOForm] = useState({
+    moNumber: '',
+    name: '',
+    description: '',
+    plannedStartDate: '',
+    plannedEndDate: '',
+  })
 
   useEffect(() => {
     fetchOrder()
+    fetchMachines()
+    fetchUsers()
   }, [params.id])
 
   const fetchOrder = async () => {
@@ -85,6 +118,120 @@ export default function OrderDetailPage() {
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchMachines = async () => {
+    try {
+      const response = await fetch('/api/machines')
+      if (response.ok) {
+        const data = await response.json()
+        setMachines(data.machines || [])
+      }
+    } catch (error) {
+      console.error('Error fetching machines:', error)
+    }
+  }
+
+  const fetchUsers = async () => {
+    try {
+      const response = await fetch('/api/users')
+      if (response.ok) {
+        const data = await response.json()
+        setUsers(data.users || [])
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error)
+    }
+  }
+
+  const handleAddMO = () => {
+    setEditingMO(null)
+    const nextNum = (order?.manufacturingOrders.length || 0) + 1
+    setMOForm({
+      moNumber: `MO-${nextNum.toString().padStart(3, '0')}`,
+      name: '',
+      description: '',
+      plannedStartDate: '',
+      plannedEndDate: '',
+    })
+    setIsMODialogOpen(true)
+  }
+
+  const handleEditMO = (mo: ManufacturingOrder) => {
+    setEditingMO(mo)
+    setMOForm({
+      moNumber: mo.moNumber,
+      name: mo.name,
+      description: mo.description || '',
+      plannedStartDate: mo.plannedStartDate,
+      plannedEndDate: mo.plannedEndDate,
+    })
+    setIsMODialogOpen(true)
+  }
+
+  const handleDeleteMO = async (moId: string, moNumber: string) => {
+    if (!confirm(`Are you sure you want to delete MO ${moNumber}?`)) return
+
+    try {
+      const response = await fetch(`/api/mo/${moId}`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        toast({
+          title: 'Success',
+          description: 'MO deleted successfully',
+        })
+        await fetchOrder()
+      } else {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to delete MO')
+      }
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to delete MO',
+      })
+    }
+  }
+
+  // Check if MO can be edited/deleted (no jobsheets started)
+  const canEditMO = (mo: ManufacturingOrder) => {
+    // Can't edit if any jobsheet has tasks that have been clocked in
+    return mo.jobsheetsCount === 0
+  }
+
+  const handleSaveMO = async () => {
+    try {
+      const url = editingMO
+        ? `/api/mo/${editingMO.id}`
+        : `/api/orders/${params.id}/mo`
+
+      const response = await fetch(url, {
+        method: editingMO ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(moForm),
+      })
+
+      if (response.ok) {
+        toast({
+          title: 'Success',
+          description: editingMO ? 'MO updated successfully' : 'MO created successfully',
+        })
+        setIsMODialogOpen(false)
+        await fetchOrder()
+      } else {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to save MO')
+      }
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to save MO',
+      })
     }
   }
 
@@ -198,23 +345,13 @@ export default function OrderDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* Shortcuts */}
-            <Button variant="outline" size="sm" onClick={() => router.push('/planning/kanban')}>
-              <Kanban className="h-4 w-4 mr-2" />
-              Kanban
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => router.push('/shop-floor')}>
-              <Store className="h-4 w-4 mr-2" />
-              Shop Floor
-            </Button>
-            <Separator orientation="vertical" className="h-6" />
             <Button variant="outline" onClick={fetchOrder} disabled={loading}>
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button onClick={() => router.push('/orders/new')}>
+            <Button onClick={handleAddMO}>
               <Plus className="h-4 w-4 mr-2" />
-              New Order
+              Add MO
             </Button>
           </div>
         </div>
@@ -350,6 +487,26 @@ export default function OrderDetailPage() {
                           >
                             <FileText className="h-4 w-4" />
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleEditMO(mo)}
+                            disabled={!canEditMO(mo)}
+                            title={canEditMO(mo) ? 'Edit MO' : 'Cannot edit - MO has been processed'}
+                          >
+                            <Edit className={`h-4 w-4 ${!canEditMO(mo) ? 'text-muted-foreground' : ''}`} />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteMO(mo.id, mo.moNumber)}
+                            disabled={!canEditMO(mo)}
+                            title={canEditMO(mo) ? 'Delete MO' : 'Cannot delete - MO has been processed'}
+                          >
+                            <Trash2 className={`h-4 w-4 ${!canEditMO(mo) ? 'text-muted-foreground' : ''}`} />
+                          </Button>
                           <div className={`w-2 h-2 rounded-full ${getMOStatusColor(mo.status)}`} />
                           <Badge variant="outline">{mo.status.replace(/_/g, ' ')}</Badge>
                         </div>
@@ -401,6 +558,79 @@ export default function OrderDetailPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* MO Dialog */}
+        <Dialog open={isMODialogOpen} onOpenChange={setIsMODialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                {editingMO ? 'Edit Manufacturing Order' : 'Add New Manufacturing Order'}
+              </DialogTitle>
+              <DialogDescription>
+                {editingMO ? 'Update MO details' : 'Create a new MO for this order'}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="moNumber">MO Number *</Label>
+                <Input
+                  id="moNumber"
+                  value={moForm.moNumber}
+                  onChange={(e) => setMOForm({ ...moForm, moNumber: e.target.value })}
+                  placeholder="e.g., MO-001"
+                  disabled={!!editingMO}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="moName">MO Name *</Label>
+                <Input
+                  id="moName"
+                  value={moForm.name}
+                  onChange={(e) => setMOForm({ ...moForm, name: e.target.value })}
+                  placeholder="e.g., Frame Assembly"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="moDescription">Description</Label>
+                <Textarea
+                  id="moDescription"
+                  value={moForm.description}
+                  onChange={(e) => setMOForm({ ...moForm, description: e.target.value })}
+                  placeholder="MO description..."
+                  rows={3}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="plannedStart">Planned Start Date</Label>
+                  <Input
+                    id="plannedStart"
+                    type="date"
+                    value={moForm.plannedStartDate}
+                    onChange={(e) => setMOForm({ ...moForm, plannedStartDate: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="plannedEnd">Planned End Date</Label>
+                  <Input
+                    id="plannedEnd"
+                    type="date"
+                    value={moForm.plannedEndDate}
+                    onChange={(e) => setMOForm({ ...moForm, plannedEndDate: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsMODialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveMO} disabled={!moForm.moNumber.trim() || !moForm.name.trim()}>
+                {editingMO ? 'Update MO' : 'Create MO'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AppLayout>
   )

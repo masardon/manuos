@@ -78,3 +78,56 @@ export async function GET(request: NextRequest, { params }: Params) {
     )
   }
 }
+
+// PUT /api/mo/[id] - Update an MO
+export async function PUT(request: NextRequest, { params }: Params) {
+  try {
+    const { id } = await params
+    const body = await request.json()
+
+    const mo = await db.manufacturingOrder.update({
+      where: { id },
+      data: {
+        moNumber: body.moNumber,
+        name: body.name,
+        description: body.description,
+        plannedStartDate: body.plannedStartDate ? new Date(body.plannedStartDate) : null,
+        plannedEndDate: body.plannedEndDate ? new Date(body.plannedEndDate) : null,
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      mo,
+      message: 'MO updated successfully',
+    })
+  } catch (error) {
+    console.error('Error updating MO:', error)
+    return NextResponse.json(
+      { error: 'Failed to update MO' },
+      { status: 500 }
+    )
+  }
+}
+
+// DELETE /api/mo/[id] - Delete an MO
+export async function DELETE(request: NextRequest, { params }: Params) {
+  try {
+    const { id } = await params
+
+    await db.manufacturingOrder.delete({
+      where: { id },
+    })
+
+    return NextResponse.json({
+      success: true,
+      message: 'MO deleted successfully',
+    })
+  } catch (error) {
+    console.error('Error deleting MO:', error)
+    return NextResponse.json(
+      { error: 'Failed to delete MO' },
+      { status: 500 }
+    )
+  }
+}

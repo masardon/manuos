@@ -24,6 +24,8 @@ import {
   Plus,
   Trash2,
   Edit,
+  Package,
+  ShoppingCart,
 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -113,6 +115,7 @@ export default function MODetailPage() {
   const [mo, setMo] = useState<ManufacturingOrder | null>(null)
   const [machines, setMachines] = useState<any[]>([])
   const [users, setUsers] = useState<any[]>([])
+  const [materials, setMaterials] = useState<any[]>([])
   
   // Jobsheet dialog state
   const [isJobsheetDialogOpen, setIsJobsheetDialogOpen] = useState(false)
@@ -126,10 +129,15 @@ export default function MODetailPage() {
     plannedEndDate: '',
   })
 
+  // Material distribution dialog state
+  const [isDistributeDialogOpen, setIsDistributeDialogOpen] = useState(false)
+  const [selectedJobsheetForDist, setSelectedJobsheetForDist] = useState<string>('')
+
   useEffect(() => {
     fetchMO()
     fetchMachines()
     fetchUsers()
+    fetchMaterials()
   }, [params.id])
 
   const fetchMO = async () => {
@@ -179,6 +187,54 @@ export default function MODetailPage() {
     } catch (error) {
       console.error('Error fetching users:', error)
     }
+  }
+
+  const fetchMaterials = async () => {
+    try {
+      const response = await fetch(`/api/mo/${params.id}/materials`)
+      if (response.ok) {
+        const data = await response.json()
+        setMaterials(data.requirements || [])
+      }
+    } catch (error) {
+      console.error('Error fetching materials:', error)
+    }
+  }
+
+  const handleAutoDistribute = async () => {
+    try {
+      const response = await fetch(`/api/jobsheet/${selectedJobsheetForDist}/materials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'auto-distribute',
+          moId: params.id,
+        }),
+      })
+
+      if (response.ok) {
+        toast({
+          title: 'Success',
+          description: 'Materials distributed to jobsheet',
+        })
+        setIsDistributeDialogOpen(false)
+        fetchMO()
+      } else {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to distribute')
+      }
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to distribute materials',
+      })
+    }
+  }
+
+  const handleDistributeToJobsheet = (jobsheetId: string) => {
+    setSelectedJobsheetForDist(jobsheetId)
+    setIsDistributeDialogOpen(true)
   }
 
   const handleAddJobsheet = () => {
@@ -546,6 +602,16 @@ export default function MODetailPage() {
                         <div className="flex items-center gap-2">
                           <Button
                             variant="ghost"
+                            size="sm"
+                            className="h-8"
+                            onClick={() => handleDistributeToJobsheet(jobsheet.id)}
+                            title="Distribute Materials"
+                          >
+                            <Package className="h-4 w-4 mr-1" />
+                            Materials
+                          </Button>
+                          <Button
+                            variant="ghost"
                             size="icon"
                             className="h-8 w-8"
                             onClick={() => router.push(`/jobsheets/${jobsheet.id}`)}
@@ -625,6 +691,78 @@ export default function MODetailPage() {
                   ))}
                 </div>
               </ScrollArea>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Materials Section */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Package className="h-5 w-5" />
+                Materials
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <Button 
+                  onClick={fetchMaterials} 
+                  size="sm" 
+                  variant="outline"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh
+                </Button>
+                <Button 
+                  onClick={() => router.push(`/materials-requirements`)} 
+                  size="sm" 
+                  variant="outline"
+                >
+                  <ShoppingCart className="h-4 w-4 mr-2" />
+                  MRP
+                </Button>
+              </div>
+            </div>
+            <CardDescription>Material requirements and distribution to jobsheets</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {materials.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p className="mb-2">No materials allocated to this MO</p>
+                <Button 
+                  variant="link" 
+                  onClick={() => router.push('/materials-requirements')}
+                  className="text-primary"
+                >
+                  Run MRP to calculate materials →
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {materials.map((mat) => (
+                  <div key={mat.id} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">{mat.name}</p>
+                      <p className="text-xs text-muted-foreground">{mat.partNumber}</p>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Required:</span>
+                        <span className="ml-1 font-medium">{mat.requiredQty} {mat.unit || ''}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Reserved:</span>
+                        <span className={`ml-1 font-medium ${mat.reservedQty >= mat.requiredQty ? 'text-green-600' : 'text-yellow-600'}`}>
+                          {mat.reservedQty}
+                        </span>
+                      </div>
+                      <Badge className={mat.status === 'RESERVED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
+                        {mat.status}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </CardContent>
         </Card>
@@ -711,6 +849,41 @@ export default function MODetailPage() {
               </Button>
               <Button onClick={handleSaveJobsheet} disabled={!jobsheetForm.jsNumber.trim() || !jobsheetForm.name.trim()}>
                 {editingJobsheet ? 'Update Jobsheet' : 'Create Jobsheet'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Distribute Materials Dialog */}
+        <Dialog open={isDistributeDialogOpen} onOpenChange={setIsDistributeDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Distribute Materials to Jobsheet</DialogTitle>
+              <DialogDescription>
+                Auto-distribute reserved materials from MO to this jobsheet based on task requirements.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <p className="text-sm text-muted-foreground mb-4">
+                This will automatically allocate materials from the MO's reserved inventory to this jobsheet.
+                The materials will be divided equally among all jobsheets.
+              </p>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">This action will:</p>
+                <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
+                  <li>Check available reserved materials on this MO</li>
+                  <li>Allocate materials to the selected jobsheet</li>
+                  <li>Update jobsheet status to "Material Allocated"</li>
+                </ul>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsDistributeDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleAutoDistribute}>
+                <Package className="h-4 w-4 mr-2" />
+                Distribute Materials
               </Button>
             </DialogFooter>
           </DialogContent>

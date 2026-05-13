@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, getTenantId } from '@/lib/middleware/auth'
-import { OrderStatus, MOStatus, JobsheetStatus, TaskStatus } from '@prisma/client'
+import { requireAuth } from '@/lib/middleware/auth'
+import { OrderStatus } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
-    const user = requireAuth(request.headers)
+    const user = requireAuth(request)
     // For demo purposes, use YPTI tenant even without auth
     const tenantId = user?.tenantId || 'tenant_ypti'
 
@@ -30,8 +30,17 @@ export async function GET(request: NextRequest) {
             jobsheets: {
               include: {
                 machiningTasks: {
+                  include: {
+                    machine: {
+                      select: {
+                        id: true,
+                        name: true,
+                        code: true,
+                      },
+                    },
+                  },
                   orderBy: {
-                    plannedHours: 'asc',
+                    createdAt: 'asc',
                   },
                 },
               },
@@ -115,8 +124,9 @@ export async function GET(request: NextRequest) {
 
           // Add task-level items
           js.machiningTasks.forEach((task) => {
-            const startTime = task.clockedInAt || task.plannedStartDate || js.plannedStartDate
-            const endTime = task.clockedOutAt || task.plannedEndDate || js.plannedEndDate
+            // Tasks use clockedInAt/clockedOutAt or fall back to jobsheet dates
+            const startTime = task.clockedInAt || js.plannedStartDate
+            const endTime = task.clockedOutAt || js.plannedEndDate
             
             if (startTime && endTime) {
               ganttTasks.push({

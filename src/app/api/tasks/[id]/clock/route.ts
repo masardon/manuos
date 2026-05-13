@@ -31,11 +31,16 @@ async function calculateJobsheetProgress(jobsheetId: string) {
 // Update jobsheet status based on progress
 async function updateJobsheetStatus(jobsheetId: string, progress: number) {
   const { JobsheetStatus } = await import('@prisma/client')
-  let status = JobsheetStatus.PREPARING
+  // Get current jobsheet to preserve workflow state
+  const currentJS = await db.jobsheet.findUnique({ where: { id: jobsheetId } })
+  if (!currentJS) return null
   
-  if (progress >= 100) {
+  let status = currentJS.status
+  
+  // Auto-update status based on progress
+  if (progress >= 100 && currentJS.status !== JobsheetStatus.COMPLETED) {
     status = JobsheetStatus.COMPLETED
-  } else if (progress > 0) {
+  } else if (progress > 0 && currentJS.status === JobsheetStatus.PREPARING) {
     status = JobsheetStatus.IN_PROGRESS
   }
 
@@ -65,11 +70,16 @@ async function calculateMOProgress(moId: string) {
 // Update MO status based on progress
 async function updateMOStatus(moId: string, progress: number) {
   const { MOStatus } = await import('@prisma/client')
-  let status = MOStatus.PLANNED
+  // Get current MO to preserve workflow state
+  const currentMO = await db.manufacturingOrder.findUnique({ where: { id: moId } })
+  if (!currentMO) return null
   
-  if (progress >= 100) {
+  let status = currentMO.status
+  
+  // Auto-update status based on progress
+  if (progress >= 100 && currentMO.status !== MOStatus.COMPLETED) {
     status = MOStatus.COMPLETED
-  } else if (progress > 0) {
+  } else if (progress > 0 && currentMO.status === MOStatus.PLANNED) {
     status = MOStatus.IN_PROGRESS
   }
 
@@ -99,11 +109,16 @@ async function calculateOrderProgress(orderId: string) {
 // Update Order status based on progress
 async function updateOrderStatus(orderId: string, progress: number) {
   const { OrderStatus } = await import('@prisma/client')
-  let status = OrderStatus.DRAFT
+  // Get current order to preserve workflow state
+  const currentOrder = await db.order.findUnique({ where: { id: orderId } })
+  if (!currentOrder) return null
   
-  if (progress >= 100) {
-    status = OrderStatus.COMPLETED
-  } else if (progress > 0) {
+  let status = currentOrder.status
+  
+  // Only auto-update if in early stages
+  if (progress >= 100 && currentOrder.status !== OrderStatus.CLOSED && currentOrder.status !== OrderStatus.DELIVERED) {
+    // Don't auto-close, just update progress
+  } else if (progress > 0 && currentOrder.status === OrderStatus.DRAFT) {
     status = OrderStatus.IN_PRODUCTION
   }
 
@@ -112,7 +127,6 @@ async function updateOrderStatus(orderId: string, progress: number) {
     data: {
       progressPercent: progress,
       status,
-      actualEndDate: progress >= 100 ? new Date() : null,
     },
   })
 

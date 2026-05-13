@@ -1,10 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { authenticateRequest } from '@/lib/auth/middleware'
 
 export async function GET(request: NextRequest) {
   try {
-    // Check for user cookie
-    const userCookie = request.cookies.get('manuos-user')
+    // Try to authenticate via JWT or cookie
+    const authResult = await authenticateRequest(request)
     
+    if (authResult.success && authResult.user) {
+      // Get full user data from database
+      const { db } = await import('@/lib/db')
+      const user = await db.user.findUnique({
+        where: { id: authResult.user.id },
+        include: {
+          role: true,
+          userSettings: true
+        }
+      })
+      
+      if (user) {
+        const { passwordHash, ...userWithoutPassword } = user
+        return NextResponse.json({
+          user: {
+            ...userWithoutPassword,
+            role: user.role.name,
+            roleCode: user.role.code,
+          }
+        })
+      }
+    }
+    
+    // Fallback to cookie check for backward compatibility
+    const userCookie = request.cookies.get('manuos-user')
     if (userCookie) {
       try {
         const user = JSON.parse(userCookie.value)
@@ -19,6 +45,7 @@ export async function GET(request: NextRequest) {
     
     return NextResponse.json({ user: null })
   } catch (error) {
+    console.error('Auth me error:', error)
     return NextResponse.json({ user: null })
   }
 }

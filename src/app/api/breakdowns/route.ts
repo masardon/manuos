@@ -41,18 +41,16 @@ export async function GET(request: NextRequest) {
 // POST /api/breakdowns - Create new breakdown
 export async function POST(request: NextRequest) {
   try {
-    const authError = await requireAuth(request)
-    if (authError) return authError
-
-    const tenantId = await getTenantId(request)
-    const userId = await getUserId(request)
-
-    if (!tenantId || !userId) {
+    const user = requireAuth(request)
+    if (!user) {
       return NextResponse.json(
         { error: 'Authentication required' },
-        { status: 400 }
+        { status: 401 }
       )
     }
+
+    const tenantId = user.tenantId
+    const userId = user.id
 
     const body = await request.json()
 

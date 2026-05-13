@@ -30,6 +30,11 @@ import {
   LogOut,
   User,
   Play,
+  ShoppingCart,
+  MapPin,
+  ArrowRightLeft,
+  Layers,
+  Shield,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -113,6 +118,13 @@ const navigationGroups = [
         roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_TECHNICIAN', 'ROLE_SUPER_ADMIN'],
       },
       {
+        id: 'quality-control',
+        name: 'Quality Control',
+        href: '/quality-control',
+        icon: Shield,
+        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_SUPER_ADMIN'],
+      },
+      {
         id: 'machines',
         name: 'Machines',
         href: '/machines',
@@ -136,6 +148,41 @@ const navigationGroups = [
         name: 'Inventory',
         href: '/inventory',
         icon: Package,
+        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_WAREHOUSE', 'ROLE_SUPER_ADMIN'],
+      },
+      {
+        id: 'material-requirements',
+        name: 'Material Requirements',
+        href: '/materials-requirements',
+        icon: Layers,
+        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_SUPER_ADMIN'],
+      },
+      {
+        id: 'purchase-requests',
+        name: 'Purchase Requests',
+        href: '/purchase-requests',
+        icon: ShoppingCart,
+        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_SUPER_ADMIN'],
+      },
+      {
+        id: 'vendors',
+        name: 'Vendors & Outsourcing',
+        href: '/vendors',
+        icon: Building2,
+        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_SUPER_ADMIN'],
+      },
+      {
+        id: 'locations',
+        name: 'Locations & Storage',
+        href: '/locations',
+        icon: MapPin,
+        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_WAREHOUSE', 'ROLE_SUPER_ADMIN'],
+      },
+      {
+        id: 'handoffs',
+        name: 'Material Handoffs',
+        href: '/handoffs',
+        icon: ArrowRightLeft,
         roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_WAREHOUSE', 'ROLE_SUPER_ADMIN'],
       },
     ],

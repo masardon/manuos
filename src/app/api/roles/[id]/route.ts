@@ -12,14 +12,15 @@ const updateRoleSchema = z.object({
 // GET /api/roles/[id] - Get a specific role
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params
     const role = await db.role.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         _count: {
-          select: { user: true },
+          select: { users: true },
         },
       },
     })
@@ -44,15 +45,16 @@ export async function GET(
 // PUT /api/roles/[id] - Update a role
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params
     const body = await request.json()
     const validatedData = updateRoleSchema.parse(body)
 
     // Check if role exists
     const existingRole = await db.role.findUnique({
-      where: { id: params.id },
+      where: { id },
     })
 
     if (!existingRole) {
@@ -85,7 +87,7 @@ export async function PUT(
     }
 
     const role = await db.role.update({
-      where: { id: params.id },
+      where: { id },
       data: validatedData,
     })
 
@@ -95,7 +97,7 @@ export async function PUT(
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Validation error', details: error.errors },
+        { error: 'Validation error', details: error.issues },
         { status: 400 }
       )
     }
@@ -110,15 +112,17 @@ export async function PUT(
 // DELETE /api/roles/[id] - Delete a role
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params
+    
     // Check if role exists
     const existingRole = await db.role.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         _count: {
-          select: { user: true },
+          select: { users: true },
         },
       },
     })
@@ -139,7 +143,7 @@ export async function DELETE(
     }
 
     // Check if role has users
-    if (existingRole._count.user > 0) {
+    if (existingRole._count.users > 0) {
       return NextResponse.json(
         { error: 'Cannot delete role with assigned users. Please reassign users first.' },
         { status: 400 }
@@ -148,7 +152,7 @@ export async function DELETE(
 
     // Delete role
     await db.role.delete({
-      where: { id: params.id },
+      where: { id },
     })
 
     return NextResponse.json({ success: true })

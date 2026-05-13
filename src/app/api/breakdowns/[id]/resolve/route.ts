@@ -1,27 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, getTenantId, getUserId } from '@/lib/middleware/auth'
+import { requireAuth } from '@/lib/middleware/auth'
 import { MachineStatus } from '@prisma/client'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authError = await requireAuth(request)
-    if (authError) return authError
-
-    const tenantId = await getTenantId(request)
-    const userId = await getUserId(request)
-
-    if (!tenantId || !userId) {
+    const user = requireAuth(request)
+    if (!user) {
       return NextResponse.json(
         { error: 'Authentication required' },
-        { status: 400 }
+        { status: 401 }
       )
     }
 
-    const breakdownId = params.id
+    const tenantId = user.tenantId
+    const userId = user.id
+    const { id: breakdownId } = await context.params
 
     // Get the breakdown
     const breakdown = await db.breakdown.findFirst({
@@ -30,7 +27,14 @@ export async function POST(
         tenantId,
       },
       include: {
-        machine: true,
+        machine: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            status: true,
+          },
+        },
       },
     })
 

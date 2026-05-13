@@ -1,6 +1,8 @@
 // Simple authentication middleware helper
 // In production, replace with proper JWT/session validation
 
+import { NextRequest } from 'next/server'
+
 export interface AuthUser {
   id: string
   email: string
@@ -10,7 +12,9 @@ export interface AuthUser {
   tenantId: string
 }
 
-export function requireAuth(headers: Headers): AuthUser | null {
+export function requireAuth(requestOrHeaders: NextRequest | Headers): AuthUser | null {
+  const headers = requestOrHeaders instanceof Headers ? requestOrHeaders : requestOrHeaders.headers
+  
   // Get user from cookie
   const cookieHeader = headers.get('cookie')
   if (!cookieHeader) return null

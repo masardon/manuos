@@ -6,18 +6,25 @@ export async function GET(request: NextRequest) {
   try {
     const machines = await db.machine.findMany({
       where: {
-        tenantId: 'tenant_default',
+        tenantId: 'tenant_ypti',
       },
       include: {
-        tasks: true,
+        machiningTasks: {
+          select: {
+            id: true,
+            plannedHours: true,
+            actualHours: true,
+            status: true,
+          },
+        },
       },
     })
 
     const totalPlannedHours = machines.reduce((sum, m) =>
-      sum + m.tasks.reduce((s, t) => s + (t.plannedHours || 0), 0), 0
+      sum + m.machiningTasks.reduce((s, t) => s + (t.plannedHours || 0), 0), 0
     )
     const totalActualHours = machines.reduce((sum, m) =>
-      sum + m.tasks.reduce((s, t) => s + (t.actualHours || 0), 0), 0
+      sum + m.machiningTasks.reduce((s, t) => s + (t.actualHours || 0), 0), 0
     )
     const efficiency = totalPlannedHours > 0
       ? (totalActualHours / totalPlannedHours) * 100
@@ -26,8 +33,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       machines: machines.map((machine) => {
-        const plannedHours = machine.tasks.reduce((sum, t) => sum + (t.plannedHours || 0), 0)
-        const actualHours = machine.tasks.reduce((sum, t) => sum + (t.actualHours || 0), 0)
+        const plannedHours = machine.machiningTasks.reduce((sum, t) => sum + (t.plannedHours || 0), 0)
+        const actualHours = machine.machiningTasks.reduce((sum, t) => sum + (t.actualHours || 0), 0)
         const machineEfficiency = plannedHours > 0 ? (actualHours / plannedHours) * 100 : 0
 
         return {
@@ -36,7 +43,7 @@ export async function GET(request: NextRequest) {
           name: machine.name,
           type: machine.type || 'N/A',
           status: machine.status,
-          taskCount: machine.tasks.length,
+          taskCount: machine.machiningTasks.length,
           plannedHours: plannedHours.toFixed(2),
           actualHours: actualHours.toFixed(2),
           efficiency: machineEfficiency.toFixed(1),
@@ -44,7 +51,7 @@ export async function GET(request: NextRequest) {
       }),
       overall: {
         totalMachines: machines.length,
-        totalTasks: machines.reduce((sum, m) => sum + m.tasks.length, 0),
+        totalTasks: machines.reduce((sum, m) => sum + m.machiningTasks.length, 0),
         plannedHours: totalPlannedHours.toFixed(2),
         actualHours: totalActualHours.toFixed(2),
         efficiency: efficiency.toFixed(1),

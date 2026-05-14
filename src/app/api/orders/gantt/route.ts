@@ -38,13 +38,64 @@ export async function GET(request: NextRequest) {
                         code: true,
                       },
                     },
+                    // Include dependencies for tasks
+                    successorDependencies: {
+                      where: { isActive: true },
+                      include: {
+                        successorTask: {
+                          select: { id: true, taskNumber: true, name: true }
+                        }
+                      }
+                    },
+                    predecessorDependencies: {
+                      where: { isActive: true },
+                      include: {
+                        predecessorTask: {
+                          select: { id: true, taskNumber: true, name: true }
+                        }
+                      }
+                    }
                   },
                   orderBy: {
                     createdAt: 'asc',
                   },
                 },
+                // Include dependencies for jobsheets
+                successorDependencies: {
+                  where: { isActive: true },
+                  include: {
+                    successorJobsheet: {
+                      select: { id: true, jsNumber: true, name: true }
+                    }
+                  }
+                },
+                predecessorDependencies: {
+                  where: { isActive: true },
+                  include: {
+                    predecessorJobsheet: {
+                      select: { id: true, jsNumber: true, name: true }
+                    }
+                  }
+                }
               },
             },
+            // Include dependencies for MOs
+            successorDependencies: {
+              where: { isActive: true },
+              include: {
+                successorMO: {
+                  select: { id: true, moNumber: true, name: true }
+                }
+              }
+            },
+            predecessorDependencies: {
+              where: { isActive: true },
+              include: {
+                predecessorMO: {
+                  select: { id: true, moNumber: true, name: true }
+                }
+              }
+            }
           },
         },
       },
@@ -55,6 +106,7 @@ export async function GET(request: NextRequest) {
 
     // Transform data into Gantt task format
     const ganttTasks: any[] = []
+    const dependencies: any[] = []
 
     // Add order-level tasks
     orders.forEach((order) => {
@@ -73,12 +125,29 @@ export async function GET(request: NextRequest) {
           color: 'bg-blue-500 border-blue-600',
           // Preserve ID for hierarchy
           orderId: order.id,
+          dependencies: [], // Orders don't have dependencies
         })
       }
 
       // Add MO-level tasks
       order.manufacturingOrders.forEach((mo) => {
         if (mo.plannedStartDate && mo.plannedEndDate) {
+          // Collect dependencies for this MO
+          const moDependencies: string[] = []
+          
+          mo.predecessorDependencies.forEach(dep => {
+            if (dep.predecessorMO) {
+              moDependencies.push(`mo-${dep.predecessorMO.id}`)
+              dependencies.push({
+                id: dep.id,
+                from: `mo-${dep.predecessorMO.id}`,
+                to: `mo-${mo.id}`,
+                type: dep.dependencyType,
+                lagDays: dep.lagDays
+              })
+            }
+          })
+
           ganttTasks.push({
             id: `mo-${mo.id}`,
             name: `${mo.moNumber} - ${mo.name}`,
@@ -95,66 +164,107 @@ export async function GET(request: NextRequest) {
             orderId: order.id,
             moId: mo.id,
             moNumber: mo.moNumber,
+            dependencies: moDependencies,
           })
-        }
 
-        // Add jobsheet-level tasks
-        mo.jobsheets.forEach((js) => {
-          if (js.plannedStartDate && js.plannedEndDate) {
-            ganttTasks.push({
-              id: `js-${js.id}`,
-              name: `${js.jsNumber} - ${js.name}`,
-              orderNumber: order.orderNumber,
-              customerName: order.customerName,
-              startDate: new Date(js.plannedStartDate),
-              endDate: new Date(js.plannedEndDate),
-              progressPercent: js.progressPercent || 0,
-              status: js.status,
-              type: 'jobsheet',
-              level: 2,
-              color: 'bg-green-500 border-green-600',
-              // Preserve IDs for hierarchy
-              orderId: order.id,
-              moId: mo.id,
-              jsId: js.id,
-              moNumber: mo.moNumber,
-              jsNumber: js.jsNumber,
-            })
-          }
+          // Add jobsheet-level tasks
+          mo.jobsheets.forEach((js) => {
+            if (js.plannedStartDate && js.plannedEndDate) {
+              // Collect dependencies for this jobsheet
+              const jsDependencies: string[] = []
+              
+              js.predecessorDependencies.forEach(dep => {
+                if (dep.predecessorJobsheet) {
+                  jsDependencies.push(`js-${dep.predecessorJobsheet.id}`)
+                  dependencies.push({
+                    id: dep.id,
+                    from: `js-${dep.predecessorJobsheet.id}`,
+                    to: `js-${js.id}`,
+                    type: dep.dependencyType,
+                    lagDays: dep.lagDays
+                  })
+                }
+              })
 
-          // Add task-level items
-          js.machiningTasks.forEach((task) => {
-            // Tasks use clockedInAt/clockedOutAt or fall back to jobsheet dates
-            const startTime = task.clockedInAt || js.plannedStartDate
-            const endTime = task.clockedOutAt || js.plannedEndDate
-            
-            if (startTime && endTime) {
               ganttTasks.push({
-                id: `task-${task.id}`,
-                name: `${task.taskNumber} - ${task.name}`,
+                id: `js-${js.id}`,
+                name: `${js.jsNumber} - ${js.name}`,
                 orderNumber: order.orderNumber,
                 customerName: order.customerName,
-                startDate: new Date(startTime),
-                endDate: new Date(endTime),
-                progressPercent: task.progressPercent || 0,
-                status: task.status,
-                type: 'task',
-                level: 3,
-                color: 'bg-orange-500 border-orange-600',
-                // Preserve ALL IDs for hierarchy
+                startDate: new Date(js.plannedStartDate),
+                endDate: new Date(js.plannedEndDate),
+                progressPercent: js.progressPercent || 0,
+                status: js.status,
+                type: 'jobsheet',
+                level: 2,
+                color: 'bg-green-500 border-green-600',
+                // Preserve IDs for hierarchy
                 orderId: order.id,
                 moId: mo.id,
                 jsId: js.id,
-                taskId: task.id,
                 moNumber: mo.moNumber,
                 jsNumber: js.jsNumber,
-                taskNumber: task.taskNumber,
-                machineId: task.machineId,
-                machine: task.machine,
+                dependencies: jsDependencies,
+              })
+
+              // Add task-level items
+              js.machiningTasks.forEach((task) => {
+                // Tasks use clockedInAt/clockedOutAt or fall back to jobsheet dates
+                const startTime = task.clockedInAt || js.plannedStartDate
+                const endTime = task.clockedOutAt || js.plannedEndDate
+                
+                if (startTime && endTime) {
+                  // Collect dependencies for this task
+                  const taskDependencies: string[] = []
+                  
+                  // Check legacy dependsOn field
+                  if (task.dependsOn) {
+                    taskDependencies.push(`task-${task.dependsOn}`)
+                  }
+                  
+                  // Check new dependency relations
+                  task.predecessorDependencies.forEach(dep => {
+                    if (dep.predecessorTask) {
+                      taskDependencies.push(`task-${dep.predecessorTask.id}`)
+                      dependencies.push({
+                        id: dep.id,
+                        from: `task-${dep.predecessorTask.id}`,
+                        to: `task-${task.id}`,
+                        type: dep.dependencyType,
+                        lagDays: dep.lagDays
+                      })
+                    }
+                  })
+
+                  ganttTasks.push({
+                    id: `task-${task.id}`,
+                    name: `${task.taskNumber} - ${task.name}`,
+                    orderNumber: order.orderNumber,
+                    customerName: order.customerName,
+                    startDate: new Date(startTime),
+                    endDate: new Date(endTime),
+                    progressPercent: task.progressPercent || 0,
+                    status: task.status,
+                    type: 'task',
+                    level: 3,
+                    color: 'bg-orange-500 border-orange-600',
+                    // Preserve ALL IDs for hierarchy
+                    orderId: order.id,
+                    moId: mo.id,
+                    jsId: js.id,
+                    taskId: task.id,
+                    moNumber: mo.moNumber,
+                    jsNumber: js.jsNumber,
+                    taskNumber: task.taskNumber,
+                    machineId: task.machineId,
+                    machine: task.machine,
+                    dependencies: taskDependencies,
+                  })
+                }
               })
             }
           })
-        })
+        }
       })
     })
 
@@ -164,8 +274,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       tasks: ganttTasks,
+      dependencies: dependencies,
       count: ganttTasks.length,
       ordersCount: orders.length,
+      dependenciesCount: dependencies.length,
     })
   } catch (error) {
     console.error('Error fetching Gantt data:', error)

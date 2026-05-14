@@ -86,6 +86,16 @@ async function main() {
     update: {},
     create: { id: 'role-warehouse', name: 'Warehouse Staff', code: 'ROLE_WAREHOUSE', isSystem: false },
   })
+  const marketingRole = await prisma.role.upsert({
+    where: { code: 'ROLE_MARKETING' },
+    update: {},
+    create: { id: 'role-marketing', name: 'Marketing', code: 'ROLE_MARKETING', isSystem: false },
+  })
+  const drafterRole = await prisma.role.upsert({
+    where: { code: 'ROLE_DRAFTER' },
+    update: {},
+    create: { id: 'role-drafter', name: 'Drafter', code: 'ROLE_DRAFTER', isSystem: false },
+  })
 
   // 5. Create Users
   console.log('👤 Creating users...')
@@ -167,6 +177,36 @@ async function main() {
         passwordHash: DEMO_PASSWORD,
         isActive: true,
         employeeId: 'EMP-005',
+      },
+    }),
+    prisma.user.upsert({
+      where: { tenantId_email: { tenantId: TENANT_ID, email: 'marketing@ypti.com' } },
+      update: {},
+      create: {
+        id: 'user-marketing',
+        tenantId: TENANT_ID,
+        email: 'marketing@ypti.com',
+        name: 'Rina Wulandari',
+        phone: '+6281234567895',
+        roleId: marketingRole.id,
+        passwordHash: DEMO_PASSWORD,
+        isActive: true,
+        employeeId: 'EMP-006',
+      },
+    }),
+    prisma.user.upsert({
+      where: { tenantId_email: { tenantId: TENANT_ID, email: 'drafter@ypti.com' } },
+      update: {},
+      create: {
+        id: 'user-drafter',
+        tenantId: TENANT_ID,
+        email: 'drafter@ypti.com',
+        name: 'Hendra Gunawan',
+        phone: '+6281234567896',
+        roleId: drafterRole.id,
+        passwordHash: DEMO_PASSWORD,
+        isActive: true,
+        employeeId: 'EMP-007',
       },
     }),
   ])

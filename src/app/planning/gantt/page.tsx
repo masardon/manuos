@@ -11,8 +11,12 @@ import {
   Download,
   Filter,
   Wrench,
+  GitBranch,
+  Link2,
+  ArrowRight,
 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
+import { Badge } from '@/components/ui/badge'
 
 interface GanttTask {
   id: string
@@ -26,6 +30,15 @@ interface GanttTask {
   type: 'order' | 'mo' | 'jobsheet' | 'task'
   level: number
   color: string
+  dependencies: string[]  // Array of task IDs this task depends on
+}
+
+interface TaskDependency {
+  id: string
+  from: string
+  to: string
+  type: string
+  lagDays: number
 }
 
 interface GanttChartTask {
@@ -49,9 +62,12 @@ export default function GanttChartPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [tasks, setTasks] = useState<any[]>([])
+  const [tasks, setTasks] = useState<GanttTask[]>([])
+  const [dependencies, setDependencies] = useState<TaskDependency[]>([])
   const [viewMode, setViewMode] = useState<'week' | 'month'>('month')
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
+  const [showDependencies, setShowDependencies] = useState(true)
+  const [selectedTask, setSelectedTask] = useState<string | null>(null)
 
   const fetchGanttData = async () => {
     try {
@@ -59,7 +75,9 @@ export default function GanttChartPage() {
       if (response.ok) {
         const data = await response.json()
         const apiTasks = data.tasks || []
+        const apiDependencies = data.dependencies || []
         setTasks(apiTasks)
+        setDependencies(apiDependencies)
         
         // Initialize ALL groups as expanded by default
         const initialExpanded: Record<string, boolean> = {}
@@ -171,8 +189,8 @@ export default function GanttChartPage() {
     let maxDate = new Date('0000-01-01')
 
     tasks.forEach((task: any) => {
-      const start = new Date(task.plannedStartDate || task.clockedInAt || Date.now())
-      const end = new Date(task.plannedEndDate || task.clockedOutAt || Date.now())
+      const start = new Date(task.startDate || task.clockedInAt || Date.now())
+      const end = new Date(task.endDate || task.clockedOutAt || Date.now())
       if (start < minDate) minDate = start
       if (end > maxDate) maxDate = end
     })
@@ -185,6 +203,76 @@ export default function GanttChartPage() {
     const timelineEnd = new Date(maxDate.getTime() + padding * 2)
 
     return { start: timelineStart, end: timelineEnd }
+  }
+
+  // Get task position and dimensions
+  const getTaskDimensions = (task: any, timelineStart: Date, totalDays: number) => {
+    const startDate = new Date(task.startDate || timelineStart)
+    const endDate = new Date(task.endDate || timelineStart)
+    
+    const validStart = isNaN(startDate.getTime()) ? timelineStart : startDate
+    const validEnd = isNaN(endDate.getTime()) ? timelineStart : endDate
+    
+    const startOffset = (validStart.getTime() - timelineStart.getTime()) / (1000 * 60 * 60 * 24)
+    const duration = Math.max(1, (validEnd.getTime() - validStart.getTime()) / (1000 * 60 * 60 * 24))
+    
+    const leftPercent = Math.max(0, (startOffset / totalDays) * 100)
+    const widthPercent = Math.max(1, (duration / totalDays) * 100)
+    
+    return { leftPercent, widthPercent, duration, validStart, validEnd }
+  }
+
+  // Draw dependency arrows
+  const renderDependencyArrows = (hierarchicalTasks: any[], timelineStart: Date, totalDays: number) => {
+    if (!showDependencies || dependencies.length === 0) return null
+
+    const taskPositions: Record<string, { left: number; top: number; width: number; height: number }> = {}
+    
+    // Calculate positions for all tasks
+    hierarchicalTasks.forEach((task, index) => {
+      const { leftPercent, widthPercent } = getTaskDimensions(task, timelineStart, totalDays)
+      taskPositions[task.id] = {
+        left: leftPercent,
+        top: index * 44 + 20, // Row height is 44px (10px padding + 24px bar + 10px padding)
+        width: widthPercent,
+        height: 24,
+      }
+    })
+
+    return (
+      <svg className="absolute inset-0 pointer-events-none" style={{ width: '100%', height: '100%' }}>
+        {dependencies.map((dep) => {
+          const fromPos = taskPositions[dep.from]
+          const toPos = taskPositions[dep.to]
+          
+          if (!fromPos || !toPos) return null
+          
+          const startX = fromPos.left + fromPos.width
+          const startY = fromPos.top + fromPos.height / 2
+          const endX = toPos.left
+          const endY = toPos.top + toPos.height / 2
+          
+          // Create a curved path
+          const controlX = (startX + endX) / 2
+          
+          return (
+            <g key={dep.id}>
+              <path
+                d={`M ${startX}% ${startY} Q ${controlX}% ${startY}, ${controlX}% ${(startY + endY) / 2} T ${endX}% ${endY}`}
+                fill="none"
+                stroke="#6366f1"
+                strokeWidth="2"
+                strokeDasharray={dep.type === 'START_TO_START' || dep.type === 'FINISH_TO_FINISH' ? '5,5' : 'none'}
+              />
+              <polygon
+                points={`${endX - 1}%,${endY - 3} ${endX}%,${endY} ${endX - 1}%,${endY + 3}`}
+                fill="#6366f1"
+              />
+            </g>
+          )
+        })}
+      </svg>
+    )
   }
 
   useEffect(() => {
@@ -239,19 +327,23 @@ export default function GanttChartPage() {
               Gantt chart timeline view
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => router.push('/planning')}>
-              <Calendar className="h-4 w-4 mr-2" />
-              Planning Overview
-            </Button>
-          </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => router.push('/planning')}>
+                <Calendar className="h-4 w-4 mr-2" />
+                Planning Overview
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => router.push('/planning/dependencies')}>
+                <Link2 className="h-4 w-4 mr-2" />
+                Manage Dependencies
+              </Button>
+            </div>
         </div>
 
         {/* Controls */}
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">View Mode:</span>
-            <Select value={viewMode} onValueChange={setViewMode}>
+            <Select value={viewMode} onValueChange={(value) => setViewMode(value as "week" | "month")}>
               <SelectTrigger className="w-[120px]">
                 <SelectValue />
               </SelectTrigger>
@@ -266,15 +358,58 @@ export default function GanttChartPage() {
             <Button variant="outline" size="sm" onClick={collapseAll}>
               Collapse All
             </Button>
+            <Button 
+              variant={showDependencies ? "default" : "outline"} 
+              size="sm" 
+              onClick={() => setShowDependencies(!showDependencies)}
+            >
+              <GitBranch className="h-4 w-4 mr-2" />
+              Dependencies
+              {dependencies.length > 0 && (
+                <Badge variant="secondary" className="ml-2">{dependencies.length}</Badge>
+              )}
+            </Button>
+            <Button 
+              variant="secondary" 
+              size="sm"
+              onClick={async () => {
+                if (confirm('This will recalculate all task dates based on dependencies. Continue?')) {
+                  try {
+                    const response = await fetch('/api/execution-plan', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ respectExistingDates: true })
+                    })
+                    if (response.ok) {
+                      const data = await response.json()
+                      alert(`Recalculated ${data.recalculated} tasks. Critical path: ${data.criticalPath.length} tasks.`)
+                      await fetchGanttData() // Refresh data
+                    } else {
+                      const error = await response.json()
+                      alert(`Error: ${error.error}`)
+                    }
+                  } catch (error) {
+                    console.error('Error recalculating plan:', error)
+                    alert('Failed to recalculate plan')
+                  }
+                }
+              }}
+            >
+              <Calendar className="h-4 w-4 mr-2" />
+              Recalculate Plan
+            </Button>
           </div>
 
           <div className="text-sm text-muted-foreground">
             Total: <span className="font-medium">{tasks.length}</span> items
+            {dependencies.length > 0 && (
+              <>, <span className="font-medium">{dependencies.length}</span> dependencies</>
+            )}
           </div>
         </div>
 
         {/* Statistics */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Orders</CardTitle>
@@ -308,6 +443,15 @@ export default function GanttChartPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{tasks.filter((t) => t.type === 'task').length}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Dependencies</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{dependencies.length}</div>
             </CardContent>
           </Card>
         </div>
@@ -405,7 +549,10 @@ export default function GanttChartPage() {
                         return (
                           <>
                             {/* Hierarchical Task Rows */}
-                            <div className="space-y-1">
+                            <div className="space-y-1 relative">
+                              {/* Dependency arrows overlay */}
+                              {showDependencies && renderDependencyArrows(hierarchicalTasks, timelineStart, totalDays)}
+                              
                               {hierarchicalTasks.map((item: any, index: number) => {
                                 // Calculate position and width based on ACTUAL dates
                                 const startDate = new Date(item.plannedStartDate || item.clockedInAt || timelineStart)
@@ -501,6 +648,12 @@ export default function GanttChartPage() {
                                           <span className={`font-medium ${isDelayed ? 'text-red-600' : ''}`}>
                                             {item.progressPercent}%
                                           </span>
+                                          {item.dependencies && item.dependencies.length > 0 && (
+                                            <span className="flex items-center gap-1 text-purple-600" title={`Depends on ${item.dependencies.length} predecessor(s)`}>
+                                              <Link2 className="w-3 h-3" />
+                                              <span className="text-xs">{item.dependencies.length}</span>
+                                            </span>
+                                          )}
                                           <span className="text-muted-foreground">
                                             {validStart.toLocaleDateString()} - {validEnd.toLocaleDateString()}
                                           </span>
@@ -596,6 +749,15 @@ export default function GanttChartPage() {
                                     <div className="w-0.5 h-4 bg-red-500"></div>
                                     <span>Today</span>
                                   </div>
+                                  {showDependencies && dependencies.length > 0 && (
+                                    <>
+                                      <Separator orientation="vertical" className="h-4" />
+                                      <div className="flex items-center gap-2">
+                                        <Link2 className="w-4 h-4 text-purple-600" />
+                                        <span>Dependencies</span>
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
                                 <div className="text-muted-foreground">
                                   Timeline: {timelineStart.toLocaleDateString()} → {timelineEnd.toLocaleDateString()}

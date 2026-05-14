@@ -3,6 +3,7 @@
 
 import { db } from '@/lib/db'
 import { syncPurchaseOrdersToOdoo } from '@/lib/integrations/odoo'
+import { recordInventoryMovement, receivePurchaseOrder, reserveInventoryForMO } from '@/lib/inventory/inventory-ledger'
 
 export interface MaterialRequirementInput {
   partNumber: string
@@ -160,56 +161,23 @@ export async function autoReserveMaterials(
       continue
     }
     
-    // Create reservation and update inventory in transaction
-    await db.$transaction([
-      // Create reservation
-      db.inventoryReservation.create({
-        data: {
-          tenantId,
-          inventoryId: availableInventory.id,
-          moId,
-          materialRequirementId: req.id,
-          quantity: canReserve,
-          status: 'ALLOCATED',
-          notes: `Auto-reserved for MO ${moId}`,
-          createdBy
-        }
-      }),
-      
-      // Update inventory quantities
-      db.inventory.update({
-        where: { id: availableInventory.id },
-        data: {
-          reservedQty: { increment: canReserve },
-          availableQty: { decrement: canReserve },
-          status: 'RESERVED'
-        }
-      }),
-      
-      // Create transaction log
-      db.inventoryTransaction.create({
-        data: {
-          tenantId,
-          inventoryId: availableInventory.id,
-          type: 'RESERVATION',
-          quantity: -canReserve,
-          balance: availableInventory.quantity - availableInventory.reservedQty - canReserve,
-          referenceType: 'MO',
-          referenceId: moId,
-          notes: `Reservation for requirement ${req.id}`,
-          createdBy
-        }
-      }),
-      
-      // Update material requirement
-      db.materialRequirement.update({
-        where: { id: req.id },
-        data: {
-          reservedQty: { increment: canReserve },
-          status: neededQty - canReserve > 0 ? 'PARTIALLY_RESERVED' : 'RESERVED'
-        }
-      })
-    ])
+    // Create reservation and update inventory using ledger service
+    await reserveInventoryForMO({
+      tenantId,
+      inventoryId: availableInventory.id,
+      moId,
+      quantity: canReserve,
+      reservedBy: createdBy,
+    })
+    
+    // Update material requirement
+    await db.materialRequirement.update({
+      where: { id: req.id },
+      data: {
+        reservedQty: { increment: canReserve },
+        status: (req.reservedQty + canReserve >= req.requiredQty) ? 'RESERVED' : 'PARTIALLY_RESERVED'
+      }
+    })
     
     results.push({
       requirementId: req.id,
@@ -474,20 +442,17 @@ export async function receiveGoods(
       })
     }
     
-    // Create receipt transaction
-    await db.inventoryTransaction.create({
-      data: {
-        tenantId,
-        inventoryId,
-        type: 'RECEIT',
-        quantity: item.receivedQty,
-        balance: (prItem.inventory?.quantity || 0) + item.receivedQty,
-        toLocation: item.location,
-        referenceType: 'PURCHASE_ORDER',
-        referenceId: purchaseRequestId,
-        notes: `Received from PO ${prItem.purchaseRequest.prNumber}`,
-        createdBy: receivedBy
-      }
+    // Create receipt transaction using inventory ledger service
+    await recordInventoryMovement({
+      tenantId,
+      inventoryId,
+      type: 'RECEIPT',
+      quantity: item.receivedQty,
+      referenceType: 'PURCHASE_ORDER',
+      referenceId: purchaseRequestId,
+      toLocationId: item.location,
+      performedBy: receivedBy,
+      notes: `Received from PO ${prItem.purchaseRequest.prNumber}`,
     })
     
     // Update PR item

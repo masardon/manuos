@@ -51,6 +51,106 @@ async function calculateOrderProgress(orderId: string) {
   return Math.round(mos.reduce((sum, mo) => sum + mo.progressPercent, 0) / mos.length)
 }
 
+// Consume all remaining allocated materials for a task when it's completed
+async function consumeMaterialsForTask(taskId: string, tenantId: string, consumedBy?: string) {
+  // Get all material allocations for this task that are not fully consumed
+  const allocations = await db.taskMaterialAllocation.findMany({
+    where: {
+      taskId,
+      status: { in: ['ALLOCATED', 'PARTIALLY_CONSUMED'] },
+      remainingQty: { gt: 0 },
+    },
+    include: {
+      jobsheetMaterial: {
+        include: { materialRequirement: true }
+      }
+    }
+  })
+
+  for (const allocation of allocations) {
+    const remainingQty = allocation.remainingQty
+    if (remainingQty <= 0) continue
+
+    // Update allocation to consume remaining quantity
+    const newConsumedQty = allocation.consumedQty + remainingQty
+    const newWastedQty = allocation.wastedQty
+    const newRemainingQty = 0
+
+    await db.taskMaterialAllocation.update({
+      where: { id: allocation.id },
+      data: {
+        consumedQty: newConsumedQty,
+        wastedQty: newWastedQty,
+        remainingQty: newRemainingQty,
+        status: 'CONSUMED',
+        consumedAt: new Date(),
+        consumedBy: consumedBy || 'system',
+        wasteReason: null,
+        notes: 'Auto-consumed on task completion',
+      }
+    })
+
+    // Update material requirement consumed quantity
+    if (allocation.jobsheetMaterialId) {
+      const jobsheetMaterial = await db.jobsheetMaterial.findUnique({
+        where: { id: allocation.jobsheetMaterialId },
+        include: { materialRequirement: true }
+      })
+
+      if (jobsheetMaterial?.materialRequirementId) {
+        await db.materialRequirement.update({
+          where: { id: jobsheetMaterial.materialRequirementId },
+          data: {
+            consumedQty: { increment: remainingQty }
+          }
+        })
+      }
+
+      // Update jobsheet material consumed quantity
+      await db.jobsheetMaterial.update({
+        where: { id: allocation.jobsheetMaterialId },
+        data: {
+          consumedQty: { increment: remainingQty }
+        }
+      })
+    }
+
+    // Create inventory transaction for consumption
+    if (remainingQty > 0) {
+      const jobsheetMaterial = await db.jobsheetMaterial.findUnique({
+        where: { id: allocation.jobsheetMaterialId },
+        include: { materialRequirement: { include: { inventory: true } } }
+      })
+
+      if (jobsheetMaterial?.materialRequirement?.inventoryId) {
+        await db.inventoryTransaction.create({
+          data: {
+            tenantId,
+            inventoryId: jobsheetMaterial.materialRequirement.inventoryId,
+            type: 'CONSUMPTION',
+            quantity: -remainingQty,
+            balance: 0, // Will be calculated
+            referenceType: 'TASK',
+            referenceId: taskId,
+            notes: `Auto-consumed on task completion`,
+            createdBy: consumedBy || 'system',
+          }
+        })
+
+        // Update inventory quantity
+        await db.inventory.update({
+          where: { id: jobsheetMaterial.materialRequirement.inventoryId },
+          data: {
+            quantity: { decrement: remainingQty },
+            availableQty: { decrement: remainingQty },
+            consumedQty: { increment: remainingQty }
+          }
+        })
+      }
+    }
+  }
+}
+
 // Update jobsheet status based on tasks
 async function updateJobsheetStatus(jobsheetId: string, progress: number) {
   let status = JobsheetStatus.PREPARING
@@ -180,6 +280,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
         resolvedAt: status === 'COMPLETED' ? new Date() : task.resolvedAt,
       },
     })
+
+    // Consume materials when task is completed
+    if (status === 'COMPLETED' && task.status !== 'COMPLETED') {
+      await consumeMaterialsForTask(id, task.tenantId, body.consumedBy)
+    }
 
     // Roll up progress to parent entities
     if (task.jobsheetId) {

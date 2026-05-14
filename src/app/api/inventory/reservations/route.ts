@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth/middleware'
 import { z } from 'zod'
+import { reserveInventoryForMO } from '@/lib/inventory/inventory-ledger'
 
 const createReservationSchema = z.object({
   inventoryId: z.string().min(1),
@@ -71,66 +72,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const data = createReservationSchema.parse(body)
 
-    // Check inventory exists and has enough available quantity
-    const inventory = await db.inventory.findFirst({
-      where: {
-        id: data.inventoryId,
-        tenantId: user.tenantId
-      }
-    })
-
-    if (!inventory) {
-      return NextResponse.json({ error: 'Inventory not found' }, { status: 404 })
-    }
-
-    if (inventory.availableQty < data.quantity) {
-      return NextResponse.json(
-        { 
-          error: 'Insufficient available quantity',
-          available: inventory.availableQty,
-          requested: data.quantity
-        },
-        { status: 400 }
-      )
-    }
-
-    // Create reservation and update inventory atomically
-    const [reservation] = await db.$transaction([
-      db.inventoryReservation.create({
-        data: {
-          tenantId: user.tenantId,
-          inventoryId: data.inventoryId,
-          orderId: data.orderId,
-          moId: data.moId,
-          quantity: data.quantity,
-          status: 'ALLOCATED',
-          notes: data.notes,
-          createdBy: user.id,
-        }
-      }),
-      db.inventory.update({
-        where: { id: data.inventoryId },
-        data: {
-          reservedQty: { increment: data.quantity },
-          availableQty: { decrement: data.quantity },
-          status: 'RESERVED'
-        }
-      })
-    ])
-
-    // Create transaction log
-    await db.inventoryTransaction.create({
-      data: {
-        tenantId: user.tenantId,
-        inventoryId: data.inventoryId,
-        type: 'RESERVATION',
-        quantity: -data.quantity,
-        balance: inventory.quantity - inventory.reservedQty - data.quantity,
-        referenceType: data.orderId ? 'ORDER' : data.moId ? 'MO' : 'RESERVATION',
-        referenceId: data.orderId || data.moId || reservation.id,
-        notes: `Reservation: ${data.notes || 'No notes'}`,
-        createdBy: user.id,
-      }
+    // Create reservation using inventory ledger service
+    const reservation = await reserveInventoryForMO({
+      tenantId: user.tenantId,
+      inventoryId: data.inventoryId,
+      moId: data.moId || '',
+      quantity: data.quantity,
+      reservedBy: user.id,
     })
 
     return NextResponse.json({

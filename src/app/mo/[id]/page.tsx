@@ -26,6 +26,8 @@ import {
   Edit,
   Package,
   ShoppingCart,
+  Building,
+  Factory,
 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -46,6 +48,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { MaterialRequirementsCard } from '@/components/materials/material-requirements-card'
 
 interface Task {
   id: string
@@ -97,6 +100,12 @@ interface ManufacturingOrder {
   plannedEndDate: string
   actualStartDate: string | null
   actualEndDate: string | null
+  isOutsourced: boolean
+  outsourcedType: string | null
+  vendor: {
+    name: string
+    code: string
+  } | null
   order: {
     id: string
     orderNumber: string
@@ -132,6 +141,8 @@ export default function MODetailPage() {
   // Material distribution dialog state
   const [isDistributeDialogOpen, setIsDistributeDialogOpen] = useState(false)
   const [selectedJobsheetForDist, setSelectedJobsheetForDist] = useState<string>('')
+  const [allocateMaterials, setAllocateMaterials] = useState(false)
+  const [materialAllocationType, setMaterialAllocationType] = useState<'equal' | 'manual' | 'none'>('equal')
 
   useEffect(() => {
     fetchMO()
@@ -247,6 +258,8 @@ export default function MODetailPage() {
       plannedStartDate: '',
       plannedEndDate: '',
     })
+    setAllocateMaterials(false)
+    setMaterialAllocationType('equal')
     setIsJobsheetDialogOpen(true)
   }
 
@@ -305,13 +318,22 @@ export default function MODetailPage() {
           drawingUrl: jobsheetForm.drawingUrl,
           plannedStartDate: jobsheetForm.plannedStartDate,
           plannedEndDate: jobsheetForm.plannedEndDate,
+          allocateMaterials: !editingJobsheet && allocateMaterials,
+          allocationType: materialAllocationType,
         }),
       })
 
       if (response.ok) {
+        const data = await response.json()
+        let description = editingJobsheet ? 'Jobsheet updated successfully' : 'Jobsheet created successfully'
+        
+        if (!editingJobsheet && allocateMaterials && data.allocation) {
+          description += `. Allocated ${data.allocation.allocatedCount} materials`
+        }
+        
         toast({
           title: 'Success',
-          description: editingJobsheet ? 'Jobsheet updated successfully' : 'Jobsheet created successfully',
+          description,
         })
         setIsJobsheetDialogOpen(false)
         await fetchMO()
@@ -448,6 +470,18 @@ export default function MODetailPage() {
               <div className="flex items-center gap-2 mb-1">
                 <Badge variant="outline">{mo.moNumber}</Badge>
                 {getStatusBadge(mo.status)}
+                {mo.isOutsourced ? (
+                  <Badge className="bg-purple-100 text-purple-800">
+                    <Building className="h-3 w-3 mr-1" />
+                    Subcon
+                    {mo.vendor && <span className="ml-1">({mo.vendor.name})</span>}
+                  </Badge>
+                ) : (
+                  <Badge className="bg-blue-100 text-blue-800">
+                    <Wrench className="h-3 w-3 mr-1" />
+                    Internal
+                  </Badge>
+                )}
               </div>
               <h1 className="text-3xl font-bold">{mo.name}</h1>
             </div>
@@ -695,77 +729,8 @@ export default function MODetailPage() {
           </CardContent>
         </Card>
 
-        {/* Materials Section */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <Package className="h-5 w-5" />
-                Materials
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                <Button 
-                  onClick={fetchMaterials} 
-                  size="sm" 
-                  variant="outline"
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Refresh
-                </Button>
-                <Button 
-                  onClick={() => router.push(`/materials-requirements`)} 
-                  size="sm" 
-                  variant="outline"
-                >
-                  <ShoppingCart className="h-4 w-4 mr-2" />
-                  MRP
-                </Button>
-              </div>
-            </div>
-            <CardDescription>Material requirements and distribution to jobsheets</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {materials.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p className="mb-2">No materials allocated to this MO</p>
-                <Button 
-                  variant="link" 
-                  onClick={() => router.push('/materials-requirements')}
-                  className="text-primary"
-                >
-                  Run MRP to calculate materials →
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {materials.map((mat) => (
-                  <div key={mat.id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <p className="font-medium">{mat.name}</p>
-                      <p className="text-xs text-muted-foreground">{mat.partNumber}</p>
-                    </div>
-                    <div className="flex items-center gap-4 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">Required:</span>
-                        <span className="ml-1 font-medium">{mat.requiredQty} {mat.unit || ''}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Reserved:</span>
-                        <span className={`ml-1 font-medium ${mat.reservedQty >= mat.requiredQty ? 'text-green-600' : 'text-yellow-600'}`}>
-                          {mat.reservedQty}
-                        </span>
-                      </div>
-                      <Badge className={mat.status === 'RESERVED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
-                        {mat.status}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* Material Requirements */}
+        <MaterialRequirementsCard moId={params.id as string} onRefresh={fetchMO} />
 
         {/* Jobsheet Dialog */}
         <Dialog open={isJobsheetDialogOpen} onOpenChange={setIsJobsheetDialogOpen}>
@@ -841,6 +806,63 @@ export default function MODetailPage() {
                     onChange={(e) => setJobsheetForm({ ...jobsheetForm, plannedEndDate: e.target.value })}
                   />
                 </div>
+              </div>
+              
+              {/* Material Allocation Options */}
+              <div className="border-t pt-4 mt-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <input
+                    type="checkbox"
+                    id="allocateMaterials"
+                    checked={allocateMaterials}
+                    onChange={(e) => setAllocateMaterials(e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                  <Label htmlFor="allocateMaterials" className="font-medium">
+                    Allocate Materials from MO
+                  </Label>
+                </div>
+                
+                {allocateMaterials && (
+                  <div className="space-y-3 pl-6 border-l-2 border-muted">
+                    <p className="text-sm text-muted-foreground">
+                      Distribute materials from the MO's reserved inventory to this jobsheet.
+                    </p>
+                    
+                    <div className="space-y-2">
+                      <Label className="text-sm">Allocation Method</Label>
+                      <Select value={materialAllocationType} onValueChange={(value: any) => setMaterialAllocationType(value)}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="equal">Equal Distribution (1/N of each material)</SelectItem>
+                          <SelectItem value="manual">Manual Allocation</SelectItem>
+                          <SelectItem value="none">Don't Allocate (Purchase separately)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    {materialAllocationType === 'equal' && (
+                      <div className="p-3 bg-muted/50 rounded-lg">
+                        <p className="text-sm">
+                          Materials will be distributed equally among all jobsheets in this MO.
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          This is recommended for most manufacturing scenarios.
+                        </p>
+                      </div>
+                    )}
+                    
+                    {materialAllocationType === 'manual' && (
+                      <div className="p-3 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg">
+                        <p className="text-sm">
+                          You'll be able to manually allocate materials after creating the jobsheet.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             <DialogFooter>

@@ -104,6 +104,13 @@ const navigationGroups = [
         roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_TECHNICIAN', 'ROLE_WAREHOUSE', 'ROLE_SUPER_ADMIN'],
       },
       {
+        id: 'production-output',
+        name: 'Production Output',
+        href: '/production-output',
+        icon: Package,
+        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_TECHNICIAN', 'ROLE_SUPER_ADMIN'],
+      },
+      {
         id: 'kanban',
         name: 'Kanban Board',
         href: '/planning/kanban',
@@ -144,8 +151,15 @@ const navigationGroups = [
     title: 'Inventory',
     items: [
       {
+        id: 'inventory-dashboard',
+        name: 'Inventory Dashboard',
+        href: '/inventory/dashboard',
+        icon: BarChart3,
+        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_WAREHOUSE', 'ROLE_SUPER_ADMIN'],
+      },
+      {
         id: 'inventory',
-        name: 'Inventory',
+        name: 'Inventory List',
         href: '/inventory',
         icon: Package,
         roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_WAREHOUSE', 'ROLE_SUPER_ADMIN'],
@@ -155,6 +169,13 @@ const navigationGroups = [
         name: 'Material Requirements',
         href: '/materials-requirements',
         icon: Layers,
+        roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_SUPER_ADMIN'],
+      },
+      {
+        id: 'material-allocation',
+        name: 'Material Allocation',
+        href: '/material-allocation',
+        icon: ArrowRightLeft,
         roles: ['ROLE_ADMIN', 'ROLE_PPIC', 'ROLE_MANAGER', 'ROLE_SUPER_ADMIN'],
       },
       {

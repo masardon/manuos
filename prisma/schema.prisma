@@ -181,6 +181,7 @@ model Order {
   vendorOrders      VendorOrder[]
   workflow          Workflow? @relation(fields: [workflowId], references: [id])
   currentState      WorkflowState? @relation("OrderCurrentState", fields: [currentStateId], references: [id])
+  productionOutputs ProductionOutput[]
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId])
@@ -222,6 +223,9 @@ model ManufacturingOrder {
   
   recipeId    String?
   
+  // Dependencies
+  dependsOn   String?  // Legacy single dependency (for backward compatibility)
+  
   notes       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -239,6 +243,12 @@ model ManufacturingOrder {
   currentState WorkflowState? @relation("MOCurrentState", fields: [currentStateId], references: [id])
   recipe      Recipe? @relation(fields: [recipeId], references: [id])
   vendor      Supplier? @relation(fields: [vendorId], references: [id])
+  productionOutputs ProductionOutput[]
+  
+  // Task dependencies (as predecessor)
+  successorDependencies  TaskDependency[] @relation("MOToSuccessor")
+  // Task dependencies (as successor)
+  predecessorDependencies TaskDependency[] @relation("MOToPredecessor")
 
   @@unique([tenantId, orderId, moNumber])
   @@index([tenantId])
@@ -248,6 +258,7 @@ model ManufacturingOrder {
   @@index([recipeId])
   @@index([vendorId])
   @@index([isOutsourced])
+  @@index([dependsOn])
 }
 
 model Jobsheet {
@@ -283,6 +294,12 @@ model Jobsheet {
   machiningTasks     MachiningTask[]
   materialHandoffs   MaterialHandoff[]
   materialAllocations JobsheetMaterial[]
+  productionOutputs  ProductionOutput[]
+  
+  // Task dependencies (as predecessor)
+  successorDependencies  TaskDependency[] @relation("JobsheetToSuccessor")
+  // Task dependencies (as successor)
+  predecessorDependencies TaskDependency[] @relation("JobsheetToPredecessor")
 
   @@unique([tenantId, moId, jsNumber])
   @@index([tenantId])
@@ -327,6 +344,12 @@ model MachiningTask {
   assignedUser     User? @relation(fields: [assignedTo], references: [id])
   materialHandoffs MaterialHandoff[]
   materialAllocations TaskMaterialAllocation[]
+  productionOutputs ProductionOutput[]
+  
+  // Task dependencies (as predecessor)
+  successorDependencies  TaskDependency[] @relation("TaskToSuccessor")
+  // Task dependencies (as successor)
+  predecessorDependencies TaskDependency[] @relation("TaskToPredecessor")
 
   @@unique([tenantId, jobsheetId, taskNumber])
   @@index([tenantId])
@@ -335,6 +358,154 @@ model MachiningTask {
   @@index([status])
   @@index([assignedTo])
   @@index([dependsOn])
+}
+
+// ============================================
+// TASK DEPENDENCIES (PREDECESSOR/SUCCESSOR)
+// ============================================
+
+model TaskDependency {
+  id              String   @id @default(cuid())
+  tenantId        String
+  
+  // Predecessor (the task that must finish first)
+  // Using separate foreign keys for each type (polymorphic pattern)
+  predecessorTaskId     String?
+  predecessorJobsheetId String?
+  predecessorMoId       String?
+  predecessorOrderId    String?
+  
+  // Successor (the task that depends on predecessor)
+  successorTaskId       String?
+  successorJobsheetId   String?
+  successorMoId         String?
+  successorOrderId      String?
+  
+  // Dependency type
+  dependencyType  DependencyType @default(FINISH_TO_START)  // FS, SS, FF, SF
+  lagDays         Float @default(0)  // Positive = delay, Negative = overlap
+  
+  // Status
+  isActive        Boolean @default(true)
+  
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations to predecessor entities
+  predecessorTask     MachiningTask? @relation("TaskToSuccessor", fields: [predecessorTaskId], references: [id])
+  predecessorJobsheet Jobsheet? @relation("JobsheetToSuccessor", fields: [predecessorJobsheetId], references: [id])
+  predecessorMO       ManufacturingOrder? @relation("MOToSuccessor", fields: [predecessorMoId], references: [id])
+  
+  // Relations to successor entities
+  successorTask       MachiningTask? @relation("TaskToPredecessor", fields: [successorTaskId], references: [id])
+  successorJobsheet   Jobsheet? @relation("JobsheetToPredecessor", fields: [successorJobsheetId], references: [id])
+  successorMO         ManufacturingOrder? @relation("MOToPredecessor", fields: [successorMoId], references: [id])
+
+  @@unique([tenantId, predecessorTaskId, successorTaskId])
+  @@index([tenantId])
+  @@index([predecessorTaskId])
+  @@index([successorTaskId])
+  @@index([predecessorMoId])
+  @@index([successorMoId])
+}
+
+enum DependencyEntityType {
+  TASK
+  JOBSHEET
+  MO
+  ORDER
+}
+
+enum DependencyType {
+  FINISH_TO_START    // FS: Successor starts after predecessor finishes
+  START_TO_START     // SS: Successor starts when predecessor starts
+  FINISH_TO_FINISH   // FF: Successor finishes when predecessor finishes
+  START_TO_FINISH    // SF: Successor finishes when predecessor starts
+}
+
+// ============================================
+// PRODUCTION OUTPUT TRACKING
+// ============================================
+
+model ProductionOutput {
+  id              String   @id @default(cuid())
+  tenantId        String
+  outputNumber    String   @unique  // PO-2026-001
+  
+  // Source
+  taskId          String
+  jobsheetId      String
+  moId            String
+  orderId         String
+  
+  // What was produced
+  partNumber      String
+  productName     String
+  batch           String?
+  
+  // Quantities
+  plannedQty      Float    // Expected output
+  actualQty       Float    // Actual produced
+  goodQty         Float    @default(0)  // Passed QC
+  reworkQty       Float    @default(0)  // Needs rework
+  scrapQty        Float    @default(0)  // Rejected/scrapped
+  
+  // Status
+  status          ProductionOutputStatus @default(IN_PROGRESS)
+  
+  // Material consumption (what was used)
+  materialConsumed String?  // JSON of consumed materials
+  
+  // Timing
+  startedAt       DateTime?
+  completedAt     DateTime?
+  
+  // QC
+  qcPassed        Boolean  @default(false)
+  qcCheckedAt     DateTime?
+  qcCheckedBy     String?
+  qcNotes         String?
+  
+  // Location
+  outputLocationId String?  // Where finished goods go
+  outputShelfId    String?
+  
+  // Notes
+  notes           String?
+  defectNotes     String?
+  
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  task            MachiningTask @relation(fields: [taskId], references: [id])
+  jobsheet        Jobsheet @relation(fields: [jobsheetId], references: [id])
+  mo              ManufacturingOrder @relation(fields: [moId], references: [id])
+  order           Order @relation(fields: [orderId], references: [id])
+  outputLocation  Location? @relation("ProductionOutputLocation", fields: [outputLocationId], references: [id])
+  outputShelf     Shelf? @relation("ProductionOutputShelf", fields: [outputShelfId], references: [id])
+  qcInspector     User? @relation(fields: [qcCheckedBy], references: [id])
+  inventoryTransactions InventoryTransaction[]
+  
+  @@unique([tenantId, outputNumber])
+  @@index([tenantId])
+  @@index([taskId])
+  @@index([jobsheetId])
+  @@index([moId])
+  @@index([status])
+  @@index([partNumber])
+}
+
+enum ProductionOutputStatus {
+  IN_PROGRESS
+  COMPLETED
+  QC_PASSED
+  QC_FAILED
+  REWORK
+  SCRAPPED
+  STORED
 }
 
 // ============================================
@@ -952,6 +1123,7 @@ model Location {
   inventory       Inventory[]
   outgoingHandoffs MaterialHandoff[] @relation("HandoffFromLocation")
   incomingHandoffs MaterialHandoff[] @relation("HandoffToLocation")
+  productionOutputs ProductionOutput[] @relation("ProductionOutputLocation")
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -988,6 +1160,7 @@ model Shelf {
   // Relations
   location        Location @relation(fields: [locationId], references: [id])
   inventory       Inventory[]
+  productionOutputs ProductionOutput[] @relation("ProductionOutputShelf")
 
   @@unique([tenantId, locationId, code])
   @@index([tenantId])
@@ -1228,6 +1401,7 @@ model InventoryTransaction {
   purchaseOrderId String?
   orderId         String?
   moId            String?
+  productionOutputId String?
   
   handoffStatus   HandoffStatus?
   expectedDate    DateTime?
@@ -1243,6 +1417,7 @@ model InventoryTransaction {
   purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
   order           Order? @relation(fields: [orderId], references: [id])
   mo              ManufacturingOrder? @relation(fields: [moId], references: [id])
+  productionOutput ProductionOutput? @relation(fields: [productionOutputId], references: [id])
 
   @@index([tenantId])
   @@index([inventoryId])
@@ -1421,6 +1596,7 @@ model User {
   qualityInspections  QualityCheck[]
   assignedReworks     ReworkOrder[]
   reworkTasks         ReworkTask[]
+  productionOutputs   ProductionOutput[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -2097,4 +2273,21 @@ enum TaskMaterialStatus {
   CONSUMED
   WASTED
   RETURNED
+}
+
+model OdooSyncLog {
+  id          String   @id @default(cuid())
+  tenantId    String
+  syncType    String   // PURCHASE_ORDER, GOODS_RECEIPT, etc.
+  status      String   // SUCCESS, FAILED, PENDING
+  message     String?
+  details     String?  // JSON details
+  odooPoId    String?
+  odooReceiptId String?
+  syncedAt    DateTime @default(now())
+  createdAt   DateTime @default(now())
+  
+  @@index([tenantId])
+  @@index([syncType])
+  @@index([syncedAt])
 }

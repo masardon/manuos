@@ -2,6 +2,7 @@
 // Auto-calculates material requirements based on BOM/Recipe
 
 import { db } from '@/lib/db'
+import { reserveInventoryForMO } from '@/lib/inventory/inventory-ledger'
 
 // ============================================
 // MRP Calculation Engine
@@ -243,26 +244,13 @@ export async function autoReserveFromStock(
 
       const qtyToReserve = Math.min(inv.availableQty, remainingToReserve)
 
-      // Create reservation
-      await db.inventoryReservation.create({
-        data: {
-          tenantId,
-          inventoryId: inv.id,
-          moId,
-          materialRequirementId: req.id,
-          quantity: qtyToReserve,
-          status: 'ALLOCATED',
-          createdBy,
-        },
-      })
-
-      // Update inventory
-      await db.inventory.update({
-        where: { id: inv.id },
-        data: {
-          reservedQty: { increment: qtyToReserve },
-          availableQty: { decrement: qtyToReserve },
-        },
+      // Create reservation using inventory ledger service
+      await reserveInventoryForMO({
+        tenantId,
+        inventoryId: inv.id,
+        moId,
+        quantity: qtyToReserve,
+        reservedBy: createdBy,
       })
 
       remainingToReserve -= qtyToReserve

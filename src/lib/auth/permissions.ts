@@ -207,6 +207,30 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   // Customer
   'ROLE_CUSTOMER': [
     'order:read'
+  ],
+
+  // Marketing
+  'ROLE_MARKETING': [
+    'order:read', 'order:create', 'order:update',
+    'mo:read',
+    'jobsheet:read',
+    'task:read',
+    'inventory:read',
+    'report:read', 'report:production',
+    'supplier:read',
+    'recipe:read'
+  ],
+
+  // Drafter (Engineering)
+  'ROLE_DRAFTER': [
+    'order:read',
+    'mo:read', 'mo:create', 'mo:update',
+    'jobsheet:read', 'jobsheet:create', 'jobsheet:update',
+    'task:read', 'task:create', 'task:update',
+    'machine:read',
+    'inventory:read',
+    'recipe:read', 'recipe:create', 'recipe:update',
+    'report:read', 'report:production'
   ]
 }
 
@@ -239,5 +263,13 @@ export const ROLE_DESCRIPTIONS: Record<string, { name: string; description: stri
   'ROLE_CUSTOMER': {
     name: 'Customer',
     description: 'View own orders only'
+  },
+  'ROLE_MARKETING': {
+    name: 'Marketing',
+    description: 'Manage customer orders and relationships'
+  },
+  'ROLE_DRAFTER': {
+    name: 'Drafter',
+    description: 'Create and manage technical drawings and recipes'
   }
 }

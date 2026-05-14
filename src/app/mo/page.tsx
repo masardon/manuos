@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
-import { Search, RefreshCw, Wrench, Calendar, Clock } from 'lucide-react'
+import { Search, RefreshCw, Wrench, Calendar, Clock, Building, Factory } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -17,6 +17,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface ManufacturingOrder {
   id: string
@@ -26,6 +33,12 @@ interface ManufacturingOrder {
   progressPercent: number
   plannedStartDate: string
   plannedEndDate: string
+  isOutsourced: boolean
+  outsourcedType: string | null
+  vendor: {
+    name: string
+    code: string
+  } | null
   order: {
     orderNumber: string
     customerName: string
@@ -39,6 +52,7 @@ export default function MOListPage() {
   const [loading, setLoading] = useState(true)
   const [mos, setMos] = useState<ManufacturingOrder[]>([])
   const [searchTerm, setSearchTerm] = useState('')
+  const [processorFilter, setProcessorFilter] = useState<string>('all')
 
   const fetchMOs = async () => {
     try {
@@ -80,12 +94,24 @@ export default function MOListPage() {
     fetchMOs()
   }, [])
 
-  const filteredMOs = mos.filter((mo) =>
-    mo.moNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    mo.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    mo.order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    mo.order.customerName.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredMOs = mos.filter((mo) => {
+    // Search filter
+    const matchesSearch = 
+      mo.moNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      mo.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      mo.order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      mo.order.customerName.toLowerCase().includes(searchTerm.toLowerCase())
+    
+    // Processor filter
+    let matchesProcessor = true
+    if (processorFilter === 'internal') {
+      matchesProcessor = !mo.isOutsourced
+    } else if (processorFilter === 'external') {
+      matchesProcessor = mo.isOutsourced
+    }
+    
+    return matchesSearch && matchesProcessor
+  })
 
   const formatTimeline = (startDate: string, endDate: string) => {
     const start = new Date(startDate)
@@ -111,6 +137,30 @@ export default function MOListPage() {
     return <Badge className={config[statusValue] || 'bg-gray-100 text-gray-800'}>{statusValue.replace(/_/g, ' ')}</Badge>
   }
 
+  const getProcessorBadge = (mo: ManufacturingOrder) => {
+    if (mo.isOutsourced) {
+      return (
+        <div className="flex items-center gap-2">
+          <Badge className="bg-purple-100 text-purple-800">
+            <Building className="h-3 w-3 mr-1" />
+            Subcon
+          </Badge>
+          {mo.vendor && (
+            <span className="text-xs text-muted-foreground">
+              ({mo.vendor.name})
+            </span>
+          )}
+        </div>
+      )
+    }
+    return (
+      <Badge className="bg-blue-100 text-blue-800">
+        <Wrench className="h-3 w-3 mr-1" />
+        Internal
+      </Badge>
+    )
+  }
+
   return (
     <AppLayout title="Manufacturing Orders">
       <div className="space-y-6">
@@ -126,23 +176,49 @@ export default function MOListPage() {
           </Button>
         </div>
 
-        {/* Search */}
+        {/* Search & Filter */}
         <Card>
           <CardContent className="pt-6">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by MO number, name, order, or customer..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9"
-              />
+            <div className="flex gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by MO number, name, order, or customer..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Select value={processorFilter} onValueChange={setProcessorFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Filter by processor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    <div className="flex items-center gap-2">
+                      <span>All MOs</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="internal">
+                    <div className="flex items-center gap-2">
+                      <Wrench className="h-4 w-4 text-blue-500" />
+                      <span>Internal Only</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="external">
+                    <div className="flex items-center gap-2">
+                      <Building className="h-4 w-4 text-purple-500" />
+                      <span>Outsourced Only</span>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </CardContent>
         </Card>
 
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total MOs</CardTitle>
@@ -150,6 +226,28 @@ export default function MOListPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{mos.length}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Internal</CardTitle>
+              <Wrench className="h-4 w-4 text-blue-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600">
+                {mos.filter((mo) => !mo.isOutsourced).length}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Outsourced</CardTitle>
+              <Building className="h-4 w-4 text-purple-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-purple-600">
+                {mos.filter((mo) => mo.isOutsourced).length}
+              </div>
             </CardContent>
           </Card>
           <Card>
@@ -190,8 +288,15 @@ export default function MOListPage() {
         {/* MO List */}
         <Card>
           <CardHeader>
-            <CardTitle>All Manufacturing Orders</CardTitle>
-            <CardDescription>Production batches with jobsheets and tasks</CardDescription>
+            <CardTitle>
+              {processorFilter === 'all' ? 'All Manufacturing Orders' : 
+               processorFilter === 'internal' ? 'Internal Manufacturing Orders' : 
+               'Outsourced Manufacturing Orders'}
+            </CardTitle>
+            <CardDescription>
+              {filteredMOs.length} of {mos.length} orders shown
+              {processorFilter !== 'all' && ` (filtered by ${processorFilter})`}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -205,6 +310,7 @@ export default function MOListPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>MO Number</TableHead>
+                    <TableHead>Processor</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Order</TableHead>
                     <TableHead>Customer</TableHead>
@@ -220,6 +326,7 @@ export default function MOListPage() {
                       <TableCell className="font-medium">
                         <Badge variant="outline">{mo.moNumber}</Badge>
                       </TableCell>
+                      <TableCell>{getProcessorBadge(mo)}</TableCell>
                       <TableCell>{mo.name}</TableCell>
                       <TableCell>{mo.order.orderNumber}</TableCell>
                       <TableCell>{mo.order.customerName}</TableCell>

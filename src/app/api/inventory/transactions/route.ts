@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth/middleware'
 import { z } from 'zod'
+import { recordInventoryMovement } from '@/lib/inventory/inventory-ledger'
 
 const createTransactionSchema = z.object({
   inventoryId: z.string().min(1),
@@ -105,94 +106,24 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const data = createTransactionSchema.parse(body)
 
-    // Check inventory exists
-    const inventory = await db.inventory.findFirst({
-      where: {
-        id: data.inventoryId,
-        tenantId: user.tenantId
-      }
+    // Create transaction using inventory ledger service
+    const result = await recordInventoryMovement({
+      tenantId: user.tenantId,
+      inventoryId: data.inventoryId,
+      type: data.type as any,
+      quantity: data.type === 'ISSUE' || data.type === 'CONSUMPTION' ? -data.quantity : data.quantity,
+      referenceType: data.referenceType || 'MANUAL',
+      referenceId: data.referenceId || '',
+      fromLocationId: data.fromLocation,
+      toLocationId: data.toLocation,
+      performedBy: user.id,
+      notes: data.notes,
     })
-
-    if (!inventory) {
-      return NextResponse.json({ error: 'Inventory not found' }, { status: 404 })
-    }
-
-    // Calculate new quantities
-    let newQuantity = inventory.quantity
-    let newReservedQty = inventory.reservedQty
-    let newAvailableQty = inventory.availableQty
-
-    switch (data.type) {
-      case 'RECEIPT':
-        newQuantity += data.quantity
-        newAvailableQty += data.quantity
-        break
-      case 'ISSUE':
-      case 'CONSUMPTION':
-        if (data.quantity > inventory.availableQty) {
-          return NextResponse.json(
-            { error: 'Insufficient available quantity', available: inventory.availableQty },
-            { status: 400 }
-          )
-        }
-        newQuantity -= data.quantity
-        newAvailableQty -= data.quantity
-        break
-      case 'TRANSFER':
-        // Transfer doesn't change total quantity, just location
-        break
-      case 'ADJUSTMENT':
-        newQuantity = data.quantity
-        newAvailableQty = data.quantity - inventory.reservedQty
-        break
-      case 'RETURN':
-        newQuantity += data.quantity
-        newAvailableQty += data.quantity
-        break
-    }
-
-    // Create transaction and update inventory atomically
-    const [transaction] = await db.$transaction([
-      db.inventoryTransaction.create({
-        data: {
-          tenantId: user.tenantId,
-          inventoryId: data.inventoryId,
-          type: data.type,
-          quantity: data.type === 'ISSUE' || data.type === 'CONSUMPTION' ? -data.quantity : data.quantity,
-          balance: newQuantity,
-          fromLocation: data.fromLocation,
-          toLocation: data.toLocation,
-          fromBatch: data.fromBatch,
-          toBatch: data.toBatch,
-          referenceType: data.referenceType,
-          referenceId: data.referenceId,
-          purchaseOrderId: data.purchaseOrderId,
-          orderId: data.orderId,
-          moId: data.moId,
-          handoffStatus: data.handoffStatus,
-          expectedDate: data.expectedDate ? new Date(data.expectedDate) : null,
-          carrier: data.carrier,
-          trackingNumber: data.trackingNumber,
-          notes: data.notes,
-          createdBy: user.id,
-        }
-      }),
-      db.inventory.update({
-        where: { id: data.inventoryId },
-        data: {
-          quantity: newQuantity,
-          reservedQty: newReservedQty,
-          availableQty: newAvailableQty,
-          location: data.toLocation || inventory.location,
-          batch: data.toBatch || inventory.batch,
-          status: newAvailableQty > 0 ? (newReservedQty > 0 ? 'RESERVED' : 'AVAILABLE') : 'WIP'
-        }
-      })
-    ])
 
     return NextResponse.json({
       success: true,
-      transaction,
+      transaction: result.transaction,
+      newBalance: result.newBalance,
       message: 'Transaction recorded successfully'
     }, { status: 201 })
   } catch (error) {

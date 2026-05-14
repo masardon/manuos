@@ -63,6 +63,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       plannedHours,
       plannedStartDate,
       plannedEndDate,
+      materialAllocations, // array of { jobsheetMaterialId, quantity }
     } = body
 
     // Get jobsheet to get tenant and MO info
@@ -116,6 +117,46 @@ export async function POST(request: NextRequest, { params }: Params) {
         },
       },
     })
+
+    // Process material allocations if provided
+    if (materialAllocations && Array.isArray(materialAllocations)) {
+      for (const allocation of materialAllocations) {
+        const { jobsheetMaterialId, quantity } = allocation
+        if (!jobsheetMaterialId || !quantity || quantity <= 0) continue
+
+        // Verify jobsheet material exists and belongs to this jobsheet
+        const jobsheetMaterial = await db.jobsheetMaterial.findUnique({
+          where: { id: jobsheetMaterialId },
+        })
+
+        if (!jobsheetMaterial || jobsheetMaterial.jobsheetId !== id) continue
+
+        // Check available quantity
+        if (jobsheetMaterial.availableQty < quantity) continue
+
+        // Create task material allocation
+        await db.taskMaterialAllocation.create({
+          data: {
+            tenantId: jobsheet.tenantId,
+            jobsheetMaterialId,
+            taskId: task.id,
+            allocatedQty: quantity,
+            consumedQty: 0,
+            wastedQty: 0,
+            remainingQty: quantity,
+            status: 'ALLOCATED',
+          }
+        })
+
+        // Update jobsheet material available quantity
+        await db.jobsheetMaterial.update({
+          where: { id: jobsheetMaterialId },
+          data: {
+            availableQty: { decrement: quantity }
+          }
+        })
+      }
+    }
 
     return NextResponse.json({
       success: true,

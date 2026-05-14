@@ -28,6 +28,14 @@ export async function GET(request: NextRequest) {
             progressPercent: true,
             plannedStartDate: true,
             plannedEndDate: true,
+            isOutsourced: true,
+            outsourcedType: true,
+            vendor: {
+              select: {
+                name: true,
+                code: true,
+              },
+            },
             jobsheets: {
               select: {
                 id: true,

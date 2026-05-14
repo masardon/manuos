@@ -22,6 +22,12 @@ export async function GET(request: NextRequest, { params }: Params) {
             progressPercent: true,
           },
         },
+        vendor: {
+          select: {
+            name: true,
+            code: true,
+          },
+        },
         jobsheets: {
           include: {
             machiningTasks: {

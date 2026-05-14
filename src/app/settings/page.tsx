@@ -16,7 +16,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
-import { Search, RefreshCw, Plus, Trash2, Edit, Save } from 'lucide-react'
+import { Search, RefreshCw, Plus, Trash2, Edit, Save, Settings } from 'lucide-react'
+import Link from 'next/link'
 import {
   Dialog,
   DialogContent,
@@ -295,13 +296,20 @@ export default function SettingsPage() {
               Manage system-wide configuration and preferences
             </p>
           </div>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={() => resetNewSetting()}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Setting
+          <div className="flex gap-2">
+            <Link href="/settings/odoo">
+              <Button variant="outline">
+                <Settings className="mr-2 h-4 w-4" />
+                Odoo Integration
               </Button>
-            </DialogTrigger>
+            </Link>
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <DialogTrigger asChild>
+                <Button onClick={() => resetNewSetting()}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Setting
+                </Button>
+              </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Create New Setting</DialogTitle>
@@ -408,6 +416,7 @@ export default function SettingsPage() {
             </form>
           </DialogContent>
         </Dialog>
+          </div>
       </div>
 
       <Card>

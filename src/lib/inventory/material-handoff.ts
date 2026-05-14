@@ -2,6 +2,7 @@
 // Tracks material movement between locations and processes
 
 import { db } from '@/lib/db'
+import { recordInventoryMovement } from '@/lib/inventory/inventory-ledger'
 
 export interface HandoffInput {
   fromLocationId: string
@@ -164,31 +165,18 @@ export async function createMaterialHandoff(
         }
       })
       
-      // Update inventory location
-      await tx.inventory.update({
-        where: { id: item.inventoryId },
-        data: {
-          locationId: data.toLocationId,
-          currentProcess: toLocation.type,
-        }
-      })
-      
-      // Create transaction log
-      await tx.inventoryTransaction.create({
-        data: {
-          tenantId,
-          inventoryId: item.inventoryId,
-          type: 'TRANSFER',
-          quantity: 0, // No quantity change, just location
-          balance: (await tx.inventory.findUnique({ where: { id: item.inventoryId } }))?.quantity || 0,
-          fromLocation: fromLocation.name,
-          toLocation: toLocation.name,
-          referenceType: 'HANDOFF',
-          referenceId: handoff.id,
-          handoffStatus: 'PENDING',
-          notes: `Handoff: ${handoffNumber}`,
-          createdBy: data.handedBy,
-        }
+      // Update inventory location using ledger service
+      await recordInventoryMovement({
+        tenantId,
+        inventoryId: item.inventoryId,
+        type: 'TRANSFER',
+        quantity: 0, // No quantity change, just location
+        referenceType: 'HANDOFF',
+        referenceId: handoff.id,
+        fromLocationId: data.fromLocationId,
+        toLocationId: data.toLocationId,
+        performedBy: data.handedBy,
+        notes: `Handoff: ${handoffNumber}`,
       })
     }
     

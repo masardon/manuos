@@ -28,6 +28,7 @@ import {
   Kanban,
   Store,
   X,
+  Package,
 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -48,6 +49,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 interface Task {
   id: string
@@ -110,6 +112,13 @@ export default function JobsheetDetailPage() {
   const [jobsheet, setJobsheet] = useState<Jobsheet | null>(null)
   const [machines, setMachines] = useState<any[]>([])
   const [users, setUsers] = useState<any[]>([])
+  const [materials, setMaterials] = useState<any>(null)
+  
+  // Allocation dialog state
+  const [allocationDialogOpen, setAllocationDialogOpen] = useState(false)
+  const [selectedJobAllocation, setSelectedJobAllocation] = useState<string>('')
+  const [selectedTask, setSelectedTask] = useState<string>('')
+  const [allocateQty, setAllocateQty] = useState<number>(0)
   
   // Task dialog state
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false)
@@ -121,11 +130,13 @@ export default function JobsheetDetailPage() {
     assignedTo: '',
     plannedHours: '',
   })
+  const [taskMaterialAllocations, setTaskMaterialAllocations] = useState<{jobsheetMaterialId: string, quantity: number}[]>([])
 
   useEffect(() => {
     fetchJobsheet()
     fetchMachines()
     fetchUsers()
+    fetchMaterials()
   }, [params.id])
 
   const fetchJobsheet = async () => {
@@ -177,6 +188,67 @@ export default function JobsheetDetailPage() {
     }
   }
 
+  const fetchMaterials = async () => {
+    try {
+      const response = await fetch(`/api/jobsheet/${params.id}/materials`)
+      if (response.ok) {
+        const data = await response.json()
+        setMaterials(data)
+      }
+    } catch (error) {
+      console.error('Error fetching materials:', error)
+    }
+  }
+
+  const handleAllocateMaterial = async () => {
+    if (!selectedJobAllocation || !selectedTask || allocateQty <= 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Please select material, task, and valid quantity',
+      })
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/jobsheet/${params.id}/materials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'allocate-to-task',
+          jobsheetMaterialId: selectedJobAllocation,
+          taskId: selectedTask,
+          quantity: allocateQty,
+        }),
+      })
+
+      if (response.ok) {
+        toast({
+          title: 'Success',
+          description: 'Material allocated to task successfully',
+        })
+        setAllocationDialogOpen(false)
+        setSelectedJobAllocation('')
+        setSelectedTask('')
+        setAllocateQty(0)
+        await fetchMaterials()
+      } else {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to allocate material')
+      }
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to allocate material',
+      })
+    }
+  }
+
+  // Derived values for allocation dialog
+  const selectedAllocation = materials?.jobAllocations?.find((a: any) => a.id === selectedJobAllocation)
+  const availableQty = selectedAllocation?.availableQty || 0
+
   const handleAddTask = () => {
     setEditingTask(null)
     setTaskForm({
@@ -186,6 +258,9 @@ export default function JobsheetDetailPage() {
       assignedTo: '',
       plannedHours: '',
     })
+    setTaskMaterialAllocations([])
+    setSelectedJobAllocation('')
+    setAllocateQty(0)
     setIsTaskDialogOpen(true)
   }
 
@@ -198,6 +273,9 @@ export default function JobsheetDetailPage() {
       assignedTo: task.assignedUser?.id || '',
       plannedHours: task.plannedHours?.toString() || '',
     })
+    setTaskMaterialAllocations([])
+    setSelectedJobAllocation('')
+    setAllocateQty(0)
     setIsTaskDialogOpen(true)
   }
 
@@ -233,10 +311,15 @@ export default function JobsheetDetailPage() {
         ? `/api/tasks/${editingTask.id}`
         : `/api/jobsheet/${params.id}/tasks`
 
+      const body = editingTask ? taskForm : {
+        ...taskForm,
+        materialAllocations: taskMaterialAllocations,
+      }
+
       const response = await fetch(url, {
         method: editingTask ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(taskForm),
+        body: JSON.stringify(body),
       })
 
       if (response.ok) {
@@ -386,310 +469,458 @@ export default function JobsheetDetailPage() {
           </div>
         </div>
 
-        {/* Progress Overview */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Progress Overview</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Overall Progress</span>
-                <span className="text-lg font-bold">{jobsheet.progressPercent}%</span>
-              </div>
-              <Progress value={jobsheet.progressPercent} className="h-3" />
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-                <div>
-                  <div className="text-xs text-muted-foreground">Status</div>
-                  <div className="font-medium">{jobsheet.status.replace(/_/g, ' ')}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Tasks</div>
-                  <div className="font-medium">{jobsheet.machiningTasks.length} total</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Completed</div>
-                  <div className="font-medium">{jobsheet.machiningTasks.filter(t => t.status === 'COMPLETED').length}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">In Progress</div>
-                  <div className="font-medium">{jobsheet.machiningTasks.filter(t => t.status === 'RUNNING').length}</div>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Tabs */}
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="tasks">Tasks</TabsTrigger>
+            <TabsTrigger value="materials">Materials</TabsTrigger>
+            {jobsheet.drawingUrl && (
+              <TabsTrigger value="drawing">Drawing</TabsTrigger>
+            )}
+          </TabsList>
 
-        {/* Order Hierarchy */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Order Hierarchy</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-                <FileText className="h-5 w-5 text-muted-foreground" />
-                <div className="flex-1">
-                  <div className="text-xs text-muted-foreground">Order</div>
-                  <div className="font-medium">{jobsheet.manufacturingOrder.order.orderNumber}</div>
-                  <div className="text-sm text-muted-foreground">{jobsheet.manufacturingOrder.order.customerName}</div>
+          {/* Overview Tab */}
+          <TabsContent value="overview" className="space-y-6">
+            {/* Progress Overview */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Progress Overview</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Overall Progress</span>
+                    <span className="text-lg font-bold">{jobsheet.progressPercent}%</span>
+                  </div>
+                  <Progress value={jobsheet.progressPercent} className="h-3" />
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Status</div>
+                      <div className="font-medium">{jobsheet.status.replace(/_/g, ' ')}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Tasks</div>
+                      <div className="font-medium">{jobsheet.machiningTasks.length} total</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Completed</div>
+                      <div className="font-medium">{jobsheet.machiningTasks.filter(t => t.status === 'COMPLETED').length}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">In Progress</div>
+                      <div className="font-medium">{jobsheet.machiningTasks.filter(t => t.status === 'RUNNING').length}</div>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-xs text-muted-foreground">Progress</div>
-                  <div className="font-medium">{jobsheet.manufacturingOrder.order.progressPercent}%</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-                <Wrench className="h-5 w-5 text-muted-foreground" />
-                <div className="flex-1">
-                  <div className="text-xs text-muted-foreground">Manufacturing Order</div>
-                  <div className="font-medium">{jobsheet.manufacturingOrder.moNumber}</div>
-                  <div className="text-sm text-muted-foreground">{jobsheet.manufacturingOrder.name}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-muted-foreground">Progress</div>
-                  <div className="font-medium">{jobsheet.manufacturingOrder.progressPercent}%</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 bg-primary/10 border border-primary/20 rounded-lg">
-                <FileText className="h-5 w-5 text-primary" />
-                <div className="flex-1">
-                  <div className="text-xs text-muted-foreground">Jobsheet (Current)</div>
-                  <div className="font-medium">{jobsheet.jsNumber}</div>
-                  <div className="text-sm text-muted-foreground">{jobsheet.name}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-muted-foreground">Progress</div>
-                  <div className="font-medium">{jobsheet.progressPercent}%</div>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
 
-        {/* Timeline */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Timeline</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <div className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
-                  Planned Start
-                </div>
-                <div className="font-medium mt-1">{formatDateTime(jobsheet.plannedStartDate)}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
-                  Planned End
-                </div>
-                <div className="font-medium mt-1">{formatDateTime(jobsheet.plannedEndDate)}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
-                  Actual Start
-                </div>
-                <div className="font-medium mt-1">{formatDateTime(getActualStartDate())}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground flex items-center gap-1">
-                  <CheckCircle className="h-3 w-3" />
-                  Actual End
-                </div>
-                <div className="font-medium mt-1">{formatDateTime(getActualEndDate())}</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Tasks List */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Machining Tasks</CardTitle>
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary">{jobsheet.machiningTasks.length} tasks</Badge>
-                <Button onClick={handleAddTask} size="sm" variant="outline">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Task
-                </Button>
-              </div>
-            </div>
-            <CardDescription>Detailed breakdown of machining operations</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {jobsheet.machiningTasks.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No tasks defined for this jobsheet</p>
-              </div>
-            ) : (
-              <ScrollArea className="h-[600px]">
+            {/* Order Hierarchy */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Order Hierarchy</CardTitle>
+              </CardHeader>
+              <CardContent>
                 <div className="space-y-3">
-                  {jobsheet.machiningTasks.map((task) => (
-                    <div key={task.id} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline">{task.taskNumber}</Badge>
-                          <span className="font-semibold">{task.name}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => handleEditTask(task)}
-                            disabled={!canEditTask(task)}
-                          >
-                            <Edit className={`h-4 w-4 ${!canEditTask(task) ? 'text-muted-foreground' : ''}`} />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive"
-                            onClick={() => handleDeleteTask(task.id, task.taskNumber)}
-                            disabled={!canEditTask(task)}
-                          >
-                            <Trash2 className={`h-4 w-4 ${!canEditTask(task) ? 'text-muted-foreground' : ''}`} />
-                          </Button>
-                          <div className={`w-2 h-2 rounded-full ${getTaskStatusColor(task.status)}`} />
-                          <Badge variant="outline">{task.status.replace(/_/g, ' ')}</Badge>
-                        </div>
-                      </div>
+                  <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                    <FileText className="h-5 w-5 text-muted-foreground" />
+                    <div className="flex-1">
+                      <div className="text-xs text-muted-foreground">Order</div>
+                      <div className="font-medium">{jobsheet.manufacturingOrder.order.orderNumber}</div>
+                      <div className="text-sm text-muted-foreground">{jobsheet.manufacturingOrder.order.customerName}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-muted-foreground">Progress</div>
+                      <div className="font-medium">{jobsheet.manufacturingOrder.order.progressPercent}%</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                    <Wrench className="h-5 w-5 text-muted-foreground" />
+                    <div className="flex-1">
+                      <div className="text-xs text-muted-foreground">Manufacturing Order</div>
+                      <div className="font-medium">{jobsheet.manufacturingOrder.moNumber}</div>
+                      <div className="text-sm text-muted-foreground">{jobsheet.manufacturingOrder.name}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-muted-foreground">Progress</div>
+                      <div className="font-medium">{jobsheet.manufacturingOrder.progressPercent}%</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                    <FileText className="h-5 w-5 text-primary" />
+                    <div className="flex-1">
+                      <div className="text-xs text-muted-foreground">Jobsheet (Current)</div>
+                      <div className="font-medium">{jobsheet.jsNumber}</div>
+                      <div className="text-sm text-muted-foreground">{jobsheet.name}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-muted-foreground">Progress</div>
+                      <div className="font-medium">{jobsheet.progressPercent}%</div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-                      {task.description && (
-                        <p className="text-sm text-muted-foreground mb-3">{task.description}</p>
-                      )}
+            {/* Timeline */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Timeline</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      Planned Start
+                    </div>
+                    <div className="font-medium mt-1">{formatDateTime(jobsheet.plannedStartDate)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      Planned End
+                    </div>
+                    <div className="font-medium mt-1">{formatDateTime(jobsheet.plannedEndDate)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      Actual Start
+                    </div>
+                    <div className="font-medium mt-1">{formatDateTime(getActualStartDate())}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      <CheckCircle className="h-3 w-3" />
+                      Actual End
+                    </div>
+                    <div className="font-medium mt-1">{formatDateTime(getActualEndDate())}</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                        {task.machine && (
-                          <div>
-                            <div className="text-xs text-muted-foreground flex items-center gap-1">
-                              <Wrench className="h-3 w-3" />
-                              Machine
+          {/* Tasks Tab */}
+          <TabsContent value="tasks">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Machining Tasks</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary">{jobsheet.machiningTasks.length} tasks</Badge>
+                    <Button onClick={handleAddTask} size="sm" variant="outline">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Task
+                    </Button>
+                  </div>
+                </div>
+                <CardDescription>Detailed breakdown of machining operations</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {jobsheet.machiningTasks.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No tasks defined for this jobsheet</p>
+                  </div>
+                ) : (
+                  <ScrollArea className="h-[600px]">
+                    <div className="space-y-3">
+                      {jobsheet.machiningTasks.map((task) => (
+                        <div key={task.id} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline">{task.taskNumber}</Badge>
+                              <span className="font-semibold">{task.name}</span>
                             </div>
-                            <div className="font-medium text-sm">{task.machine.name}</div>
-                          </div>
-                        )}
-                        {task.assignedUser && (
-                          <div>
-                            <div className="text-xs text-muted-foreground flex items-center gap-1">
-                              <User className="h-3 w-3" />
-                              Technician
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => handleEditTask(task)}
+                                disabled={!canEditTask(task)}
+                              >
+                                <Edit className={`h-4 w-4 ${!canEditTask(task) ? 'text-muted-foreground' : ''}`} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:text-destructive"
+                                onClick={() => handleDeleteTask(task.id, task.taskNumber)}
+                                disabled={!canEditTask(task)}
+                              >
+                                <Trash2 className={`h-4 w-4 ${!canEditTask(task) ? 'text-muted-foreground' : ''}`} />
+                              </Button>
+                              <div className={`w-2 h-2 rounded-full ${getTaskStatusColor(task.status)}`} />
+                              <Badge variant="outline">{task.status.replace(/_/g, ' ')}</Badge>
                             </div>
-                            <div className="font-medium text-sm">{task.assignedUser.name || task.assignedUser.email}</div>
                           </div>
-                        )}
-                        <div>
-                          <div className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            Planned
-                          </div>
-                          <div className="font-medium text-sm">{task.plannedHours || 0}h</div>
-                        </div>
-                        {task.actualHours && (
-                          <div>
-                            <div className="text-xs text-muted-foreground flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              Actual
+
+                          {task.description && (
+                            <p className="text-sm text-muted-foreground mb-3">{task.description}</p>
+                          )}
+
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                            {task.machine && (
+                              <div>
+                                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Wrench className="h-3 w-3" />
+                                  Machine
+                                </div>
+                                <div className="font-medium text-sm">{task.machine.name}</div>
+                              </div>
+                            )}
+                            {task.assignedUser && (
+                              <div>
+                                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <User className="h-3 w-3" />
+                                  Technician
+                                </div>
+                                <div className="font-medium text-sm">{task.assignedUser.name || task.assignedUser.email}</div>
+                              </div>
+                            )}
+                            <div>
+                              <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                Planned
+                              </div>
+                              <div className="font-medium text-sm">{task.plannedHours || 0}h</div>
                             </div>
-                            <div className="font-medium text-sm">{task.actualHours}h</div>
+                            {task.actualHours && (
+                              <div>
+                                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  Actual
+                                </div>
+                                <div className="font-medium text-sm">{task.actualHours}h</div>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
 
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">Progress</span>
-                          <span className="font-semibold">{task.progressPercent}%</span>
-                        </div>
-                        <Progress value={task.progressPercent} className="h-2" />
-                      </div>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">Progress</span>
+                              <span className="font-semibold">{task.progressPercent}%</span>
+                            </div>
+                            <Progress value={task.progressPercent} className="h-2" />
+                          </div>
 
-                      {/* Proceed Button - Only for uncompleted tasks */}
-                      {task.status !== 'COMPLETED' && (
-                        <div className="mt-3">
-                          {task.clockedInAt && !task.clockedOutAt && task.status === 'PAUSED' ? (
-                            // Resume Button - Blue outline style (matches Shop Floor)
-                            <Button
-                              className="w-full h-12 bg-blue-100 border-blue-300 text-blue-700 hover:bg-blue-200 hover:text-blue-800"
-                              variant="outline"
-                              onClick={() => router.push('/shop-floor')}
-                            >
-                              <Play className="h-5 w-5 mr-2" />
-                              Resume
-                            </Button>
-                          ) : task.clockedInAt && !task.clockedOutAt ? (
-                            // Clock Out Button - Red solid style (matches Shop Floor)
-                            <Button
-                              className="w-full h-12 bg-red-600 hover:bg-red-700 hover:text-white"
-                              variant="destructive"
-                              onClick={() => router.push('/shop-floor')}
-                            >
-                              <Square className="h-5 w-5 mr-2" />
-                              Clock Out
-                            </Button>
-                          ) : (
-                            // Clock In Button - Green solid style (matches Shop Floor)
-                            <Button
-                              className="w-full h-12 bg-emerald-600 hover:bg-emerald-700"
-                              onClick={() => router.push('/shop-floor')}
-                            >
-                              <Play className="h-5 w-5 mr-2" />
-                              Clock In
-                            </Button>
+                          {/* Proceed Button - Only for uncompleted tasks */}
+                          {task.status !== 'COMPLETED' && (
+                            <div className="mt-3">
+                              {task.clockedInAt && !task.clockedOutAt && task.status === 'PAUSED' ? (
+                                // Resume Button - Blue outline style (matches Shop Floor)
+                                <Button
+                                  className="w-full h-12 bg-blue-100 border-blue-300 text-blue-700 hover:bg-blue-200 hover:text-blue-800"
+                                  variant="outline"
+                                  onClick={() => router.push('/shop-floor')}
+                                >
+                                  <Play className="h-5 w-5 mr-2" />
+                                  Resume
+                                </Button>
+                              ) : task.clockedInAt && !task.clockedOutAt ? (
+                                // Clock Out Button - Red solid style (matches Shop Floor)
+                                <Button
+                                  className="w-full h-12 bg-red-600 hover:bg-red-700 hover:text-white"
+                                  variant="destructive"
+                                  onClick={() => router.push('/shop-floor')}
+                                >
+                                  <Square className="h-5 w-5 mr-2" />
+                                  Clock Out
+                                </Button>
+                              ) : (
+                                // Clock In Button - Green solid style (matches Shop Floor)
+                                <Button
+                                  className="w-full h-12 bg-emerald-600 hover:bg-emerald-700"
+                                  onClick={() => router.push('/shop-floor')}
+                                >
+                                  <Play className="h-5 w-5 mr-2" />
+                                  Clock In
+                                </Button>
+                              )}
+                            </div>
+                          )}
+
+                          {(task.clockedInAt || task.clockedOutAt) && (
+                            <div className="mt-3 pt-3 border-t">
+                              <div className="grid grid-cols-2 gap-3 text-xs">
+                                {task.clockedInAt && (
+                                  <div className="flex items-center gap-1 text-emerald-600">
+                                    <Play className="h-3 w-3" />
+                                    Started: {formatDateTime(task.clockedInAt)}
+                                  </div>
+                                )}
+                                {task.clockedOutAt && (
+                                  <div className="flex items-center gap-1 text-slate-600">
+                                    <Square className="h-3 w-3" />
+                                    Ended: {formatDateTime(task.clockedOutAt)}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           )}
                         </div>
-                      )}
-
-                      {(task.clockedInAt || task.clockedOutAt) && (
-                        <div className="mt-3 pt-3 border-t">
-                          <div className="grid grid-cols-2 gap-3 text-xs">
-                            {task.clockedInAt && (
-                              <div className="flex items-center gap-1 text-emerald-600">
-                                <Play className="h-3 w-3" />
-                                Started: {formatDateTime(task.clockedInAt)}
-                              </div>
-                            )}
-                            {task.clockedOutAt && (
-                              <div className="flex items-center gap-1 text-slate-600">
-                                <Square className="h-3 w-3" />
-                                Ended: {formatDateTime(task.clockedOutAt)}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            )}
-          </CardContent>
-        </Card>
+                  </ScrollArea>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-        {/* Engineering Drawing */}
-        {jobsheet.drawingUrl && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Engineering Drawing</CardTitle>
-              <CardDescription>CAM drawing and specifications</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="bg-muted rounded-lg overflow-hidden">
-                <img
-                  src={jobsheet.drawingUrl}
-                  alt="Engineering Drawing"
-                  className="w-full h-auto"
-                />
-              </div>
-            </CardContent>
-          </Card>
-        )}
+          {/* Materials Tab */}
+          <TabsContent value="materials">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Material Allocation</CardTitle>
+                    <CardDescription>Materials allocated to this jobsheet and consumption tracking</CardDescription>
+                  </div>
+                  <Button onClick={() => setAllocationDialogOpen(true)} size="sm">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Allocate to Task
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {!materials ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>Loading materials...</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Summary */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <Card>
+                        <CardContent className="pt-4">
+                          <div className="text-2xl font-bold">{materials.jobAllocations?.length || 0}</div>
+                          <div className="text-xs text-muted-foreground">Allocated Materials</div>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-4">
+                          <div className="text-2xl font-bold">{materials.taskAllocations?.length || 0}</div>
+                          <div className="text-xs text-muted-foreground">Task Allocations</div>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {/* Job Allocations Table */}
+                    {materials.jobAllocations?.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold mb-3">Jobsheet Material Allocations</h3>
+                        <div className="border rounded-lg overflow-hidden">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted">
+                              <tr>
+                                <th className="text-left p-3">Material</th>
+                                <th className="text-right p-3">Allocated Qty</th>
+                                <th className="text-right p-3">Available Qty</th>
+                                <th className="text-right p-3">Consumed Qty</th>
+                                <th className="text-left p-3">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {materials.jobAllocations.map((alloc: any) => (
+                                <tr key={alloc.id} className="border-t">
+                                  <td className="p-3">
+                                    {alloc.materialRequirement?.inventory?.name || alloc.materialRequirement?.name || 'Unknown'}
+                                  </td>
+                                  <td className="p-3 text-right">{alloc.allocatedQty}</td>
+                                  <td className="p-3 text-right">{alloc.availableQty}</td>
+                                  <td className="p-3 text-right">{alloc.consumedQty}</td>
+                                  <td className="p-3">
+                                    <Badge variant={alloc.status === 'ALLOCATED' ? 'default' : 'secondary'}>
+                                      {alloc.status}
+                                    </Badge>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Task Allocations Table */}
+                    {materials.taskAllocations?.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold mb-3">Task Material Allocations</h3>
+                        <div className="border rounded-lg overflow-hidden">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted">
+                              <tr>
+                                <th className="text-left p-3">Material</th>
+                                <th className="text-left p-3">Task</th>
+                                <th className="text-right p-3">Allocated Qty</th>
+                                <th className="text-right p-3">Consumed Qty</th>
+                                <th className="text-right p-3">Wasted Qty</th>
+                                <th className="text-left p-3">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {materials.taskAllocations.map((alloc: any) => (
+                                <tr key={alloc.id} className="border-t">
+                                  <td className="p-3">
+                                    {alloc.jobsheetMaterial?.materialRequirement?.inventory?.name || 
+                                     alloc.jobsheetMaterial?.materialRequirement?.name || 'Unknown'}
+                                  </td>
+                                  <td className="p-3">{alloc.task?.taskNumber || '-'}</td>
+                                  <td className="p-3 text-right">{alloc.allocatedQty}</td>
+                                  <td className="p-3 text-right">{alloc.consumedQty}</td>
+                                  <td className="p-3 text-right">{alloc.wastedQty}</td>
+                                  <td className="p-3">
+                                    <Badge variant={alloc.status === 'CONSUMED' ? 'default' : 'secondary'}>
+                                      {alloc.status}
+                                    </Badge>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {materials.jobAllocations?.length === 0 && materials.taskAllocations?.length === 0 && (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p>No materials allocated to this jobsheet yet.</p>
+                        <p className="text-sm mt-2">Materials are allocated when the jobsheet is created or can be manually distributed.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Drawing Tab */}
+          {jobsheet.drawingUrl && (
+            <TabsContent value="drawing">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Engineering Drawing</CardTitle>
+                  <CardDescription>CAM drawing and specifications</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-muted rounded-lg overflow-hidden">
+                    <img
+                      src={jobsheet.drawingUrl}
+                      alt="Engineering Drawing"
+                      className="w-full h-auto"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+        </Tabs>
 
         {/* Task Dialog */}
         <Dialog open={isTaskDialogOpen} onOpenChange={setIsTaskDialogOpen}>
@@ -772,6 +1003,87 @@ export default function JobsheetDetailPage() {
                   placeholder="e.g., 4.0"
                 />
               </div>
+
+              {/* Material Allocations (optional) */}
+              {!editingTask && (
+                <div className="space-y-4 border-t pt-4">
+                  <h4 className="font-medium">Material Allocations (Optional)</h4>
+                  {taskMaterialAllocations.length > 0 && (
+                    <div className="space-y-2">
+                      {taskMaterialAllocations.map((alloc, index) => {
+                        const material = materials?.jobAllocations?.find((a: any) => a.id === alloc.jobsheetMaterialId)
+                        return (
+                          <div key={index} className="flex items-center justify-between p-2 border rounded">
+                            <div>
+                              <div className="font-medium">
+                                {material?.materialRequirement?.inventory?.name || material?.materialRequirement?.name || 'Unknown'}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                Qty: {alloc.quantity}
+                              </div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                const newAllocations = [...taskMaterialAllocations]
+                                newAllocations.splice(index, 1)
+                                setTaskMaterialAllocations(newAllocations)
+                              }}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <Select
+                        value={selectedJobAllocation}
+                        onValueChange={setSelectedJobAllocation}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select material" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {materials?.jobAllocations?.map((alloc: any) => (
+                            <SelectItem key={alloc.id} value={alloc.id}>
+                              {alloc.materialRequirement?.inventory?.name || alloc.materialRequirement?.name || 'Unknown'} (Avail: {alloc.availableQty})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Input
+                      type="number"
+                      step="1"
+                      min="1"
+                      placeholder="Qty"
+                      value={allocateQty}
+                      onChange={(e) => setAllocateQty(parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (selectedJobAllocation && allocateQty > 0 && allocateQty <= availableQty) {
+                        setTaskMaterialAllocations([
+                          ...taskMaterialAllocations,
+                          { jobsheetMaterialId: selectedJobAllocation, quantity: allocateQty }
+                        ])
+                        setSelectedJobAllocation('')
+                        setAllocateQty(0)
+                      }
+                    }}
+                    disabled={!selectedJobAllocation || allocateQty <= 0 || allocateQty > availableQty}
+                  >
+                    Add Allocation
+                  </Button>
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsTaskDialogOpen(false)}>
@@ -779,6 +1091,76 @@ export default function JobsheetDetailPage() {
               </Button>
               <Button onClick={handleSaveTask} disabled={!taskForm.name.trim()}>
                 {editingTask ? 'Update Task' : 'Create Task'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Allocation Dialog */}
+        <Dialog open={allocationDialogOpen} onOpenChange={setAllocationDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Allocate Material to Task</DialogTitle>
+              <DialogDescription>
+                Select a material from jobsheet allocation and allocate to a specific task.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="material">Material</Label>
+                <Select
+                  value={selectedJobAllocation}
+                  onValueChange={setSelectedJobAllocation}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select material" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {materials?.jobAllocations?.map((alloc: any) => (
+                      <SelectItem key={alloc.id} value={alloc.id}>
+                        {alloc.materialRequirement?.inventory?.name || alloc.materialRequirement?.name || 'Unknown'} (Available: {alloc.availableQty})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="task">Task</Label>
+                <Select
+                  value={selectedTask}
+                  onValueChange={setSelectedTask}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select task" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {jobsheet.machiningTasks.map((task) => (
+                      <SelectItem key={task.id} value={task.id}>
+                        {task.taskNumber} - {task.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="quantity">Quantity to Allocate</Label>
+                <Input
+                  id="quantity"
+                  type="number"
+                  step="1"
+                  min="1"
+                  value={allocateQty}
+                  onChange={(e) => setAllocateQty(parseInt(e.target.value) || 0)}
+                  placeholder="Enter quantity"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAllocationDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleAllocateMaterial} disabled={!selectedJobAllocation || !selectedTask || allocateQty <= 0 || allocateQty > availableQty}>
+                Allocate
               </Button>
             </DialogFooter>
           </DialogContent>

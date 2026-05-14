@@ -54,6 +54,20 @@ interface ManufacturingOrder {
   plannedStartDate: string
   plannedEndDate: string
   jobsheetsCount: number
+  recipeId?: string
+  recipe?: {
+    id: string
+    code: string
+    name: string
+  }
+  materialRequirements?: Array<{
+    id: string
+    partNumber: string
+    name: string
+    requiredQty: number
+    reservedQty: number
+    status: string
+  }>
 }
 
 interface Order {
@@ -80,6 +94,7 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<Order | null>(null)
   const [machines, setMachines] = useState<any[]>([])
   const [users, setUsers] = useState<any[]>([])
+  const [recipes, setRecipes] = useState<any[]>([])
   
   // MO dialog state
   const [isMODialogOpen, setIsMODialogOpen] = useState(false)
@@ -90,12 +105,14 @@ export default function OrderDetailPage() {
     description: '',
     plannedStartDate: '',
     plannedEndDate: '',
+    recipeId: '',
   })
 
   useEffect(() => {
     fetchOrder()
     fetchMachines()
     fetchUsers()
+    fetchRecipes()
   }, [params.id])
 
   const fetchOrder = async () => {
@@ -147,6 +164,18 @@ export default function OrderDetailPage() {
     }
   }
 
+  const fetchRecipes = async () => {
+    try {
+      const response = await fetch('/api/recipes')
+      if (response.ok) {
+        const data = await response.json()
+        setRecipes(data.recipes || [])
+      }
+    } catch (error) {
+      console.error('Error fetching recipes:', error)
+    }
+  }
+
   const handleAddMO = () => {
     setEditingMO(null)
     const nextNum = (order?.manufacturingOrders.length || 0) + 1
@@ -156,6 +185,7 @@ export default function OrderDetailPage() {
       description: '',
       plannedStartDate: '',
       plannedEndDate: '',
+      recipeId: '',
     })
     setIsMODialogOpen(true)
   }
@@ -168,6 +198,7 @@ export default function OrderDetailPage() {
       description: mo.description || '',
       plannedStartDate: mo.plannedStartDate,
       plannedEndDate: mo.plannedEndDate,
+      recipeId: (mo as any).recipeId || '',
     })
     setIsMODialogOpen(true)
   }
@@ -218,9 +249,17 @@ export default function OrderDetailPage() {
       })
 
       if (response.ok) {
+        const data = await response.json()
+        
+        let description = editingMO ? 'MO updated successfully' : 'MO created successfully'
+        if (data.mrp) {
+          const mrpSummary = data.mrp.summary
+          description += `. MRP: ${mrpSummary.totalMaterials} materials, ${mrpSummary.reserved} reserved, ${mrpSummary.needsPurchase} need purchase`
+        }
+        
         toast({
           title: 'Success',
-          description: editingMO ? 'MO updated successfully' : 'MO created successfully',
+          description,
         })
         setIsMODialogOpen(false)
         await fetchOrder()
@@ -674,6 +713,32 @@ export default function OrderDetailPage() {
                   onChange={(e) => setMOForm({ ...moForm, name: e.target.value })}
                   placeholder="e.g., Frame Assembly"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="recipe">Recipe/BOM *</Label>
+                <Select
+                  value={moForm.recipeId}
+                  onValueChange={(value) => setMOForm({ ...moForm, recipeId: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select recipe for material requirements" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {recipes.map((recipe) => (
+                      <SelectItem key={recipe.id} value={recipe.id}>
+                        <div className="flex flex-col">
+                          <span>{recipe.code} - {recipe.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            Output: {recipe.outputQuantity} {recipe.outputUnit} {recipe.outputName}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Selecting a recipe will automatically calculate material requirements and check stock availability
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="moDescription">Description</Label>

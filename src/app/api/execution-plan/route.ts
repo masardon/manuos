@@ -17,7 +17,7 @@ interface TaskInfo {
   startDate: Date
   endDate: Date
   duration: number // in days
-  predecessors: string[]
+  predecessors: Array<{ id: string; lagDays: number }>
 }
 
 // POST /api/execution-plan - Recalculate execution plan
@@ -70,10 +70,10 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Initialize task map
+    // Initialize task map - use planned dates first (set by execution planning), then clocked times, then jobsheet dates
     for (const task of tasks) {
-      const startDate = task.clockedInAt || task.jobsheet.plannedStartDate || new Date()
-      const endDate = task.clockedOutAt || task.jobsheet.plannedEndDate || new Date()
+      const startDate = task.plannedStartDate || task.clockedInAt || task.jobsheet.plannedStartDate || new Date()
+      const endDate = task.plannedEndDate || task.clockedOutAt || task.jobsheet.plannedEndDate || new Date()
       const duration = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
       
       taskMap.set(`task-${task.id}`, {
@@ -86,16 +86,98 @@ export async function POST(request: NextRequest) {
       })
       adjacencyList.set(`task-${task.id}`, [])
     }
+    
+    // Map to store lag days for each dependency
+    const lagDaysMap: Map<string, Map<string, number>> = new Map()
 
     // Build adjacency list from dependencies
     for (const dep of dependencies) {
+      // Task-level dependencies
       if (dep.predecessorTaskId && dep.successorTaskId) {
         const predKey = `task-${dep.predecessorTaskId}`
         const succKey = `task-${dep.successorTaskId}`
         
         if (taskMap.has(predKey) && taskMap.has(succKey)) {
-          taskMap.get(succKey)!.predecessors.push(predKey)
+          taskMap.get(succKey)!.predecessors.push({ id: predKey, lagDays: dep.lagDays })
           adjacencyList.get(predKey)!.push(succKey)
+          
+          // Store lag days for this dependency
+          if (!lagDaysMap.has(succKey)) {
+            lagDaysMap.set(succKey, new Map())
+          }
+          lagDaysMap.get(succKey)!.set(predKey, dep.lagDays)
+        }
+      }
+      // MO-level dependencies - connect all tasks in successor MO to all tasks in predecessor MO
+      else if (dep.predecessorMoId && dep.successorMoId) {
+        const predTasks = tasks.filter(t => t.jobsheet?.manufacturingOrder?.id === dep.predecessorMoId)
+        const succTasks = tasks.filter(t => t.jobsheet?.manufacturingOrder?.id === dep.successorMoId)
+        
+        // Connect the last task(s) of predecessor MO to first task(s) of successor MO
+        const lastPredTasks = predTasks.filter(t => {
+          // Check if this task has no successors in the same MO
+          const hasSuccessor = predTasks.some(other => 
+            other.id !== t.id && other.jobsheet?.plannedStartDate && t.jobsheet?.plannedEndDate &&
+            other.jobsheet.plannedStartDate >= t.jobsheet.plannedEndDate
+          )
+          return !hasSuccessor
+        })
+        
+        const firstSuccTasks = succTasks.filter(t => {
+          // Check if this task has no predecessors in the same MO
+          const hasPredecessor = succTasks.some(other => 
+            other.id !== t.id && other.jobsheet?.plannedStartDate && t.jobsheet?.plannedEndDate &&
+            t.jobsheet.plannedStartDate >= other.jobsheet.plannedEndDate
+          )
+          return !hasPredecessor
+        })
+        
+        // If we can't determine specific tasks, connect all to all
+        const predTaskIds = lastPredTasks.length > 0 ? lastPredTasks.map(t => t.id) : predTasks.map(t => t.id)
+        const succTaskIds = firstSuccTasks.length > 0 ? firstSuccTasks.map(t => t.id) : succTasks.map(t => t.id)
+        
+        for (const predId of predTaskIds) {
+          const predKey = `task-${predId}`
+          if (!taskMap.has(predKey)) continue
+          
+          for (const succId of succTaskIds) {
+            const succKey = `task-${succId}`
+            if (!taskMap.has(succKey) || predId === succId) continue
+            
+            taskMap.get(succKey)!.predecessors.push({ id: predKey, lagDays: dep.lagDays })
+            adjacencyList.get(predKey)!.push(succKey)
+            
+            // Store lag days for this dependency
+            if (!lagDaysMap.has(succKey)) {
+              lagDaysMap.set(succKey, new Map())
+            }
+            lagDaysMap.get(succKey)!.set(predKey, dep.lagDays)
+          }
+        }
+      }
+      // Jobsheet-level dependencies - connect all tasks in successor jobsheet to all tasks in predecessor jobsheet
+      else if (dep.predecessorJobsheetId && dep.successorJobsheetId) {
+        const predTasks = tasks.filter(t => t.jobsheetId === dep.predecessorJobsheetId)
+        const succTasks = tasks.filter(t => t.jobsheetId === dep.successorJobsheetId)
+        
+        // Connect all tasks in predecessor jobsheet to all tasks in successor jobsheet
+        for (const pred of predTasks) {
+          const predKey = `task-${pred.id}`
+          if (!taskMap.has(predKey)) continue
+          
+          for (const succ of succTasks) {
+            const succKey = `task-${succ.id}`
+            if (!taskMap.has(succKey) || pred.id === succ.id) continue
+            
+            taskMap.get(succKey)!.predecessors.push({ id: predKey, lagDays: dep.lagDays })
+            adjacencyList.get(predKey)!.push(succKey)
+            
+            // Store lag days for this dependency
+            if (!lagDaysMap.has(succKey)) {
+              lagDaysMap.set(succKey, new Map())
+            }
+            lagDaysMap.get(succKey)!.set(predKey, dep.lagDays)
+          }
         }
       }
     }
@@ -163,11 +245,13 @@ export async function POST(request: NextRequest) {
         const originalStart = data.startDate ? new Date(data.startDate) : task.startDate
         earlyStart.set(taskId, originalStart.getTime())
       } else {
-        // Find max EF of predecessors
+        // Find max EF of predecessors (considering lag days)
         let maxEF = 0
         for (const pred of predecessors) {
-          const predEF = earlyFinish.get(pred) || 0
-          maxEF = Math.max(maxEF, predEF)
+          const predEF = earlyFinish.get(pred.id) || 0
+          // Add lag days in milliseconds
+          const lagMs = pred.lagDays * 24 * 60 * 60 * 1000
+          maxEF = Math.max(maxEF, predEF + lagMs)
         }
         earlyStart.set(taskId, maxEF)
       }
@@ -239,7 +323,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Apply updates to database
+    // Apply updates to database - update planned dates on tasks
     let updatedCount = 0
     
     for (const update of updates) {
@@ -247,9 +331,8 @@ export async function POST(request: NextRequest) {
         await db.machiningTask.update({
           where: { id: update.taskId },
           data: {
-            // Note: We might want to update the jobsheet dates instead of task dates
-            // For now, we'll update clockedInAt/clockedOutAt if they exist
-            // or we could add plannedStartDate/plannedEndDate to MachiningTask
+            plannedStartDate: update.newStartDate,
+            plannedEndDate: update.newEndDate,
           }
         })
         updatedCount++

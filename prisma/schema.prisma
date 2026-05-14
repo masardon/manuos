@@ -322,6 +322,12 @@ model MachiningTask {
   
   plannedHours Float?
   actualHours   Float?
+  
+  // Planned dates for scheduling (used by Gantt chart and execution planning)
+  plannedStartDate DateTime?
+  plannedEndDate   DateTime?
+  
+  // Actual clock times
   clockedInAt   DateTime?
   clockedOutAt  DateTime?
   

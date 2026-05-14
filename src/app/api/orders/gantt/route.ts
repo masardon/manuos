@@ -209,9 +209,9 @@ export async function GET(request: NextRequest) {
 
               // Add task-level items
               js.machiningTasks.forEach((task) => {
-                // Tasks use clockedInAt/clockedOutAt or fall back to jobsheet dates
-                const startTime = task.clockedInAt || js.plannedStartDate
-                const endTime = task.clockedOutAt || js.plannedEndDate
+                // Tasks use planned dates first (set by execution planning), then clocked times, then jobsheet dates
+                const startTime = task.plannedStartDate || task.clockedInAt || js.plannedStartDate
+                const endTime = task.plannedEndDate || task.clockedOutAt || js.plannedEndDate
                 
                 if (startTime && endTime) {
                   // Collect dependencies for this task

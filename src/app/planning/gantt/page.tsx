@@ -1,99 +1,135 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { AppLayout } from '@/components/layout/app-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import {
-  Calendar,
-  Download,
-  Filter,
-  Wrench,
-  GitBranch,
-  Link2,
-  ArrowRight,
-} from 'lucide-react'
-import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
+import { 
+  Calendar, RefreshCw, Link2, GitBranch, AlertCircle, 
+  CheckCircle, ArrowRight, Info
+} from 'lucide-react'
 
-interface GanttTask {
+// Disable static generation
+export const dynamic = 'force-dynamic'
+
+interface Task {
   id: string
+  rawId: string
   name: string
-  orderNumber: string
-  customerName: string
-  startDate: Date
-  endDate: Date
-  progressPercent: number
-  status: string
   type: 'order' | 'mo' | 'jobsheet' | 'task'
+  startDate: string
+  endDate: string
+  duration: number
+  progress: number
+  status: string
+  parent?: string
   level: number
-  color: string
-  dependencies: string[]  // Array of task IDs this task depends on
+  isCritical?: boolean
+  slackDays?: number
 }
 
-interface TaskDependency {
+interface Dependency {
   id: string
-  from: string
-  to: string
-  type: string
+  fromId: string
+  toId: string
+  type: 'FINISH_TO_START' | 'START_TO_START' | 'FINISH_TO_FINISH' | 'START_TO_FINISH'
   lagDays: number
 }
 
-interface GanttChartTask {
-  id: string | number
-  text: string
-  start: Date
-  end: Date
-  duration: number
-  progress: number
-  type: 'task' | 'summary'
-  parent?: number | string
-  open?: boolean
-}
-
-interface DateRange {
-  start: Date
-  end: Date
+interface ScheduleResult {
+  taskId: string
+  newStart: string
+  newEnd: string
+  oldStart: string
+  oldEnd: string
+  slackDays: number
+  isCritical: boolean
 }
 
 export default function GanttChartPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [tasks, setTasks] = useState<GanttTask[]>([])
-  const [dependencies, setDependencies] = useState<TaskDependency[]>([])
-  const [viewMode, setViewMode] = useState<'week' | 'month'>('month')
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
-  const [showDependencies, setShowDependencies] = useState(true)
-  const [selectedTask, setSelectedTask] = useState<string | null>(null)
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [dependencies, setDependencies] = useState<Dependency[]>([])
+  const [showDeps, setShowDeps] = useState(true)
+  const [autoScheduled, setAutoScheduled] = useState<ScheduleResult[]>([])
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [scheduling, setScheduling] = useState(false)
+  const svgRef = useRef<SVGSVGElement>(null)
+  const chartContainerRef = useRef<HTMLDivElement>(null)
 
-  const fetchGanttData = async () => {
+  // Calculate visible tasks (respecting expanded state)
+  const getVisibleTasks = useCallback(() => {
+    const visible: Task[] = []
+    const addedParents = new Set<string>()
+    
+    tasks.forEach(task => {
+      if (task.level === 0) {
+        visible.push(task)
+        addedParents.add(task.id)
+      } else if (task.parent && expandedIds.has(`order-${task.parent}`)) {
+        visible.push(task)
+      } else if (task.level === 1) {
+        // MO level - check if order is expanded
+        const orderExpanded = Array.from(expandedIds).some(id => id.startsWith('order-'))
+        if (orderExpanded) visible.push(task)
+      } else if (task.level === 2) {
+        // Jobsheet level - check if MO is expanded
+        visible.push(task)
+      } else if (task.level === 3) {
+        // Task level - check if jobsheet is expanded
+        visible.push(task)
+      }
+    })
+    
+    return visible
+  }, [tasks, expandedIds])
+
+  const visibleTasks = getVisibleTasks()
+
+  // Fetch Gantt data
+  const fetchData = async () => {
+    setLoading(true)
     try {
-      const response = await fetch('/api/orders/gantt')
-      if (response.ok) {
-        const data = await response.json()
-        const apiTasks = data.tasks || []
-        const apiDependencies = data.dependencies || []
-        setTasks(apiTasks)
-        setDependencies(apiDependencies)
+      const res = await fetch('/api/orders/gantt')
+      if (res.ok) {
+        const data = await res.json()
         
-        // Initialize ALL groups as expanded by default
-        const initialExpanded: Record<string, boolean> = {}
-        apiTasks.forEach((task: any) => {
-          // Mark all parent levels as expanded
-          if (task.orderId) {
-            initialExpanded[`order-${task.orderId}`] = true
-          }
-          if (task.moId) {
-            initialExpanded[`mo-${task.moId}`] = true
-          }
-          if (task.jsId) {
-            initialExpanded[`js-${task.jsId}`] = true
-          }
-        })
-        setExpandedGroups(initialExpanded)
+        // Transform tasks
+        const transformedTasks: Task[] = (data.tasks || []).map((t: any) => ({
+          id: t.id,
+          rawId: t.taskId || t.jsId || t.moId || t.orderId,
+          name: t.name,
+          type: t.type,
+          startDate: t.startDate || t.plannedStartDate,
+          endDate: t.endDate || t.plannedEndDate,
+          duration: Math.ceil((new Date(t.endDate || t.plannedEndDate).getTime() - new Date(t.startDate || t.plannedStartDate).getTime()) / (1000 * 60 * 60 * 24)),
+          progress: t.progressPercent || 0,
+          status: t.status,
+          parent: t.moId || t.orderId,
+          level: t.level || 0,
+        }))
+        
+        setTasks(transformedTasks)
+        
+        // Transform dependencies - from Gantt API
+        const transformedDeps: Dependency[] = (data.dependencies || []).map((d: any) => ({
+          id: d.id,
+          fromId: d.from,
+          toId: d.to,
+          type: d.type || 'FINISH_TO_START',
+          lagDays: d.lagDays || 0,
+        }))
+        
+        setDependencies(transformedDeps)
+        
+        // Expand all by default
+        const allIds = new Set<string>()
+        transformedTasks.forEach(t => allIds.add(t.id))
+        setExpandedIds(allIds)
       }
     } catch (error) {
       console.error('Error fetching Gantt data:', error)
@@ -102,216 +138,211 @@ export default function GanttChartPage() {
     }
   }
 
-  const toggleGroup = (groupId: string) => {
-    setExpandedGroups(prev => {
-      const newValue = !prev[groupId]
-      // Create a new object to trigger re-render
-      const updated = { ...prev, [groupId]: newValue }
-      console.log('Toggling', groupId, 'to', newValue, 'Total expanded:', Object.keys(updated).filter(k => updated[k]).length)
-      return updated
-    })
-  }
-
-  const expandAll = () => {
-    const allExpanded: Record<string, boolean> = {}
-    tasks.forEach((task: any) => {
-      // Use item.id directly as the key (already prefixed)
-      allExpanded[task.id] = true
-    })
-    setExpandedGroups(allExpanded)
-  }
-
-  const collapseAll = () => {
-    setExpandedGroups({})
-  }
-
-  // Group tasks by hierarchy - ALWAYS SHOW ALL LEVELS
-  const getHierarchicalTasks = () => {
-    const orders = tasks.filter((t: any) => t.type === 'order')
-    const result: any[] = []
-
-    orders.forEach((order: any) => {
-      // Use the actual item.id which is already prefixed (e.g., "order-cmlutic...")
-      const orderKey = order.id // Already "order-xxx"
-      const isOrderExpanded = expandedGroups[orderKey] !== false
+  // Auto-schedule tasks based on dependencies
+  const autoSchedule = async () => {
+    setScheduling(true)
+    try {
+      const res = await fetch('/api/execution-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ respectExistingDates: true })
+      })
       
-      // Add order
-      result.push({ ...order, level: 0, hasChildren: true, key: orderKey })
-      
-      if (isOrderExpanded) {
-        // Add MOs for this order - filter by orderId
-        const mos = tasks.filter((t: any) => t.type === 'mo' && t.orderId === order.orderId)
-        
-        mos.forEach((mo: any) => {
-          const moKey = mo.id // Already "mo-xxx"
-          const isMoExpanded = expandedGroups[moKey] !== false
-          
-          result.push({ ...mo, level: 1, hasChildren: true, key: moKey })
-          
-          if (isMoExpanded) {
-            // Add Jobsheets for this MO - filter by moId
-            const jss = tasks.filter((t: any) => t.type === 'jobsheet' && t.moId === mo.moId)
-            
-            jss.forEach((js: any) => {
-              const jsKey = js.id // Already "js-xxx"
-              const isJsExpanded = expandedGroups[jsKey] !== false
-              
-              result.push({ ...js, level: 2, hasChildren: true, key: jsKey })
-              
-              if (isJsExpanded) {
-                // Add Tasks for this Jobsheet - filter by jsId
-                const taskItems = tasks.filter((t: any) => t.type === 'task' && t.jsId === js.jsId)
-                
-                taskItems.forEach((task: any) => {
-                  result.push({ ...task, level: 3, hasChildren: false, key: task.id })
-                })
-              }
-            })
-          }
-        })
+      if (res.ok) {
+        const data = await res.json()
+        setAutoScheduled(data.updates || [])
+        alert(`✅ Scheduled ${data.recalculated} tasks\n🎯 Critical path: ${data.criticalPath.length} tasks\n\nRefresh to see updated bars.`)
+        await fetchData()
+      } else {
+        const error = await res.json()
+        alert(`❌ Error: ${error.error}`)
       }
-    })
-
-    return result
+    } catch (error) {
+      console.error('Error scheduling:', error)
+      alert('❌ Failed to schedule')
+    } finally {
+      setScheduling(false)
+    }
   }
 
-  // Calculate timeline range based on actual data
+  // Calculate timeline range
   const getTimelineRange = () => {
-    if (tasks.length === 0) {
-      const start = new Date()
-      start.setDate(start.getDate() - 30)
-      const end = new Date()
-      end.setDate(end.getDate() + 60)
-      return { start, end }
-    }
-
+    if (tasks.length === 0) return { start: new Date(), end: new Date(), totalDays: 1 }
+    
     let minDate = new Date('9999-12-31')
     let maxDate = new Date('0000-01-01')
-
-    tasks.forEach((task: any) => {
-      const start = new Date(task.startDate || task.clockedInAt || Date.now())
-      const end = new Date(task.endDate || task.clockedOutAt || Date.now())
+    
+    tasks.forEach(task => {
+      const start = new Date(task.startDate)
+      const end = new Date(task.endDate)
       if (start < minDate) minDate = start
       if (end > maxDate) maxDate = end
     })
-
-    // Add padding: 10% before start, 20% after end
-    const totalRange = maxDate.getTime() - minDate.getTime()
-    const padding = totalRange * 0.15
     
-    const timelineStart = new Date(minDate.getTime() - padding)
-    const timelineEnd = new Date(maxDate.getTime() + padding * 2)
-
-    return { start: timelineStart, end: timelineEnd }
+    // Add padding
+    const totalMs = maxDate.getTime() - minDate.getTime()
+    const padding = totalMs * 0.2
+    
+    const start = new Date(minDate.getTime() - padding)
+    const end = new Date(maxDate.getTime() + padding)
+    const totalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+    
+    return { start, end, totalDays }
   }
 
-  // Get task position and dimensions
-  const getTaskDimensions = (task: any, timelineStart: Date, totalDays: number) => {
-    const startDate = new Date(task.startDate || timelineStart)
-    const endDate = new Date(task.endDate || timelineStart)
+  // Get task bar position
+  const getTaskPosition = (task: Task, timelineStart: Date, totalDays: number) => {
+    const start = new Date(task.startDate)
+    const end = new Date(task.endDate)
     
-    const validStart = isNaN(startDate.getTime()) ? timelineStart : startDate
-    const validEnd = isNaN(endDate.getTime()) ? timelineStart : endDate
-    
-    const startOffset = (validStart.getTime() - timelineStart.getTime()) / (1000 * 60 * 60 * 24)
-    const duration = Math.max(1, (validEnd.getTime() - validStart.getTime()) / (1000 * 60 * 60 * 24))
+    const startOffset = (start.getTime() - timelineStart.getTime()) / (1000 * 60 * 60 * 24)
+    const duration = Math.max(1, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
     
     const leftPercent = Math.max(0, (startOffset / totalDays) * 100)
-    const widthPercent = Math.max(1, (duration / totalDays) * 100)
+    const widthPercent = Math.max(0.5, (duration / totalDays) * 100)
     
-    return { leftPercent, widthPercent, duration, validStart, validEnd }
+    return { leftPercent, widthPercent, duration }
   }
 
-  // Draw dependency arrows
-  const renderDependencyArrows = (hierarchicalTasks: any[], timelineStart: Date, totalDays: number) => {
-    if (!showDependencies || dependencies.length === 0) return null
-
-    const taskPositions: Record<string, { left: number; top: number; width: number; height: number }> = {}
-    
-    // Calculate positions for all tasks
-    hierarchicalTasks.forEach((task, index) => {
-      const { leftPercent, widthPercent } = getTaskDimensions(task, timelineStart, totalDays)
-      taskPositions[task.id] = {
-        left: leftPercent,
-        top: index * 44 + 20, // Row height is 44px (10px padding + 24px bar + 10px padding)
-        width: widthPercent,
-        height: 24,
-      }
-    })
-
-    return (
-      <svg className="absolute inset-0 pointer-events-none" style={{ width: '100%', height: '100%' }}>
-        {dependencies.map((dep) => {
-          const fromPos = taskPositions[dep.from]
-          const toPos = taskPositions[dep.to]
-          
-          if (!fromPos || !toPos) return null
-          
-          const startX = fromPos.left + fromPos.width
-          const startY = fromPos.top + fromPos.height / 2
-          const endX = toPos.left
-          const endY = toPos.top + toPos.height / 2
-          
-          // Create a curved path
-          const controlX = (startX + endX) / 2
-          
-          return (
-            <g key={dep.id}>
-              <path
-                d={`M ${startX}% ${startY} Q ${controlX}% ${startY}, ${controlX}% ${(startY + endY) / 2} T ${endX}% ${endY}`}
-                fill="none"
-                stroke="#6366f1"
-                strokeWidth="2"
-                strokeDasharray={dep.type === 'START_TO_START' || dep.type === 'FINISH_TO_FINISH' ? '5,5' : 'none'}
-              />
-              <polygon
-                points={`${endX - 1}%,${endY - 3} ${endX}%,${endY} ${endX - 1}%,${endY + 3}`}
-                fill="#6366f1"
-              />
-            </g>
-          )
-        })}
-      </svg>
-    )
-  }
-
+  // Fetch data on mount
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const response = await fetch('/api/auth/me')
-        if (response.ok) {
-          const data = await response.json()
-          if (data.user) {
-            setIsAuthenticated(true)
-            await fetchGanttData()
-          } else {
-            router.replace('/login')
-          }
-        } else {
-          router.replace('/login')
+    fetchData()
+  }, [])
+
+  // Draw dependency arrows after render
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!showDeps || dependencies.length === 0 || !chartContainerRef.current) return
+
+    // Wait for DOM to be ready
+    const drawArrows = () => {
+      const svg = svgRef.current
+      const container = chartContainerRef.current
+      if (!svg || !container) return
+
+      // Clear existing paths
+      svg.innerHTML = `
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#9333ea" />
+          </marker>
+        </defs>
+      `
+
+      // Draw each dependency
+      dependencies.forEach(dep => {
+        const fromEl = document.querySelector(`[data-task-id="${dep.fromId}"]`)
+        const toEl = document.querySelector(`[data-task-id="${dep.toId}"]`)
+
+        if (!fromEl || !toEl) return
+
+        const fromBar = fromEl.querySelector('[class*="rounded-md"]') as HTMLElement
+        const toBar = toEl.querySelector('[class*="rounded-md"]') as HTMLElement
+
+        if (!fromBar || !toBar) return
+
+        // Get positions relative to chart container
+        const containerRect = container.getBoundingClientRect()
+        const fromRect = fromBar.getBoundingClientRect()
+        const toRect = toBar.getBoundingClientRect()
+
+        // Calculate start/end points based on dependency type
+        let startX: number, startY: number, endX: number, endY: number
+
+        switch (dep.type) {
+          case 'START_TO_START':
+            startX = fromRect.left - containerRect.left
+            startY = fromRect.top + fromRect.height / 2 - containerRect.top
+            endX = toRect.left - containerRect.left
+            endY = toRect.top + toRect.height / 2 - containerRect.top
+            break
+          case 'FINISH_TO_FINISH':
+            startX = fromRect.right - containerRect.left
+            startY = fromRect.top + fromRect.height / 2 - containerRect.top
+            endX = toRect.right - containerRect.left
+            endY = toRect.top + toRect.height / 2 - containerRect.top
+            break
+          case 'START_TO_FINISH':
+            startX = fromRect.left - containerRect.left
+            startY = fromRect.top + fromRect.height / 2 - containerRect.top
+            endX = toRect.right - containerRect.left
+            endY = toRect.top + toRect.height / 2 - containerRect.top
+            break
+          case 'FINISH_TO_START':
+          default:
+            startX = fromRect.right - containerRect.left
+            startY = fromRect.top + fromRect.height / 2 - containerRect.top
+            endX = toRect.left - containerRect.left
+            endY = toRect.top + toRect.height / 2 - containerRect.top
+            break
         }
-      } catch (error) {
-        console.error('Auth check error:', error)
-        router.replace('/login')
-      }
+
+        // Create curved path
+        const midX = (startX + endX) / 2
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+        
+        // Different curve based on direction
+        let pathData: string
+        if (endX > startX + 20) {
+          // Normal forward dependency
+          pathData = `M${startX},${startY} C${midX},${startY}, ${midX},${endY}, ${endX},${endY}`
+        } else {
+          // Backward or overlapping - create a loop
+          const offset = 30
+          pathData = `M${startX},${startY} C${startX + offset},${startY + offset}, ${endX - offset},${endY - offset}, ${endX},${endY}`
+        }
+
+        path.setAttribute('d', pathData)
+        path.setAttribute('fill', 'none')
+        path.setAttribute('stroke', '#9333ea')
+        path.setAttribute('stroke-width', '2')
+        path.setAttribute('marker-end', 'url(#arrowhead)')
+        
+        if (dep.type === 'START_TO_START' || dep.type === 'FINISH_TO_FINISH') {
+          path.setAttribute('stroke-dasharray', '5,5')
+        }
+
+        svg.appendChild(path)
+      })
     }
 
-    checkAuth()
-  }, [router])
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(drawArrows, 150)
+    return () => clearTimeout(timer)
+  }, [dependencies, showDeps, visibleTasks, autoScheduled])
+  
+  // Calculate timeline range (before loading check)
+  const { start: timelineStart, totalDays } = getTimelineRange()
+  
+  const rowHeight = 40
+  const headerHeight = 60
+  const chartHeight = Math.max(400, visibleTasks.length * rowHeight + headerHeight + 50)
+
+  // Generate week markers
+  const weeks: { date: Date; label: string; position: number }[] = []
+  for (let i = 0; i < totalDays; i += 7) {
+    const date = new Date(timelineStart)
+    date.setDate(date.getDate() + i)
+    weeks.push({
+      date,
+      label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      position: (i / totalDays) * 100
+    })
+  }
+
+  // Today marker
+  const today = new Date()
+  const todayOffset = (today.getTime() - timelineStart.getTime()) / (1000 * 60 * 60 * 24)
+  const todayPercent = Math.max(0, Math.min(100, (todayOffset / totalDays) * 100))
 
   if (loading) {
     return (
       <AppLayout title="Production Planning - Gantt Chart">
         <div className="flex items-center justify-center min-h-[400px]">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <p className="text-muted-foreground mt-4">Loading Gantt chart...</p>
+          <RefreshCw className="h-8 w-8 animate-spin text-primary" />
         </div>
       </AppLayout>
     )
-  }
-
-  if (!isAuthenticated) {
-    return null
   }
 
   return (
@@ -320,484 +351,297 @@ export default function GanttChartPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-3xl font-bold tracking-tight">
-              Production Planning
-            </h2>
+            <h2 className="text-3xl font-bold tracking-tight">Production Planning</h2>
             <p className="text-muted-foreground mt-1">
-              Gantt chart timeline view
+              Gantt chart with dependency-aware scheduling
             </p>
           </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => router.push('/planning')}>
-                <Calendar className="h-4 w-4 mr-2" />
-                Planning Overview
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => router.push('/planning/dependencies')}>
-                <Link2 className="h-4 w-4 mr-2" />
-                Manage Dependencies
-              </Button>
-            </div>
-        </div>
-
-        {/* Controls */}
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">View Mode:</span>
-            <Select value={viewMode} onValueChange={(value) => setViewMode(value as "week" | "month")}>
-              <SelectTrigger className="w-[120px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="week">Week View</SelectItem>
-                <SelectItem value="month">Month View</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="sm" onClick={expandAll} className="ml-2">
-              Expand All
-            </Button>
-            <Button variant="outline" size="sm" onClick={collapseAll}>
-              Collapse All
-            </Button>
-            <Button 
-              variant={showDependencies ? "default" : "outline"} 
-              size="sm" 
-              onClick={() => setShowDependencies(!showDependencies)}
-            >
-              <GitBranch className="h-4 w-4 mr-2" />
-              Dependencies
-              {dependencies.length > 0 && (
-                <Badge variant="secondary" className="ml-2">{dependencies.length}</Badge>
-              )}
-            </Button>
-            <Button 
-              variant="secondary" 
-              size="sm"
-              onClick={async () => {
-                if (confirm('This will recalculate all task dates based on dependencies. Continue?')) {
-                  try {
-                    const response = await fetch('/api/execution-plan', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ respectExistingDates: true })
-                    })
-                    if (response.ok) {
-                      const data = await response.json()
-                      alert(`Recalculated ${data.recalculated} tasks. Critical path: ${data.criticalPath.length} tasks.`)
-                      await fetchGanttData() // Refresh data
-                    } else {
-                      const error = await response.json()
-                      alert(`Error: ${error.error}`)
-                    }
-                  } catch (error) {
-                    console.error('Error recalculating plan:', error)
-                    alert('Failed to recalculate plan')
-                  }
-                }
-              }}
-            >
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => router.push('/planning')}>
               <Calendar className="h-4 w-4 mr-2" />
-              Recalculate Plan
+              Planning Overview
             </Button>
-          </div>
-
-          <div className="text-sm text-muted-foreground">
-            Total: <span className="font-medium">{tasks.length}</span> items
-            {dependencies.length > 0 && (
-              <>, <span className="font-medium">{dependencies.length}</span> dependencies</>
-            )}
+            <Button variant="outline" onClick={() => router.push('/planning/dependencies')}>
+              <Link2 className="h-4 w-4 mr-2" />
+              Dependencies ({dependencies.length})
+            </Button>
           </div>
         </div>
 
-        {/* Statistics */}
-        <div className="grid gap-4 md:grid-cols-5">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Orders</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{tasks.filter((t) => t.type === 'order').length}</div>
-            </CardContent>
-          </Card>
+        {/* Stats & Controls */}
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-4">
+            <div className="text-sm">
+              <span className="font-medium">{tasks.length}</span> tasks
+            </div>
+            <div className="text-sm">
+              <span className="font-medium">{dependencies.length}</span> dependencies
+            </div>
+            <Button
+              variant={showDeps ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowDeps(!showDeps)}
+            >
+              <GitBranch className="h-4 w-4 mr-1" />
+              {showDeps ? 'Hide' : 'Show'} Dependencies
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={autoSchedule}
+              disabled={scheduling || dependencies.length === 0}
+            >
+              <RefreshCw className={`h-4 w-4 mr-1 ${scheduling ? 'animate-spin' : ''}`} />
+              {scheduling ? 'Scheduling...' : 'Auto-Schedule Tasks'}
+            </Button>
+          </div>
+          
+          {autoScheduled.length > 0 && (
+            <Badge variant="outline" className="text-green-600 border-green-600">
+              <CheckCircle className="h-3 w-3 mr-1" />
+              Last schedule: {autoScheduled.length} tasks updated
+            </Badge>
+          )}
+        </div>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Manufacturing Orders</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{tasks.filter((t) => t.type === 'mo').length}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Jobsheets</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{tasks.filter((t) => t.type === 'jobsheet').length}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Tasks</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{tasks.filter((t) => t.type === 'task').length}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Dependencies</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{dependencies.length}</div>
-            </CardContent>
-          </Card>
+        {/* Legend */}
+        <div className="flex items-center gap-4 text-sm flex-wrap">
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-3 bg-blue-500 rounded-sm"></div>
+            <span>Order</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-3 bg-purple-500 rounded-sm"></div>
+            <span>MO</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-3 bg-green-500 rounded-sm"></div>
+            <span>Jobsheet</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-3 bg-orange-500 rounded-sm"></div>
+            <span>Task</span>
+          </div>
+          <Separator orientation="vertical" className="h-4" />
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-3 bg-red-500 rounded-sm"></div>
+            <span>Delayed</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-3 bg-green-600 rounded-sm"></div>
+            <span>Completed</span>
+          </div>
+          <Separator orientation="vertical" className="h-4" />
+          <div className="flex items-center gap-1">
+            <Link2 className="w-4 h-4 text-purple-600" />
+            <span>Dependency</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-0.5 h-4 bg-red-500"></div>
+            <span>Today</span>
+          </div>
         </div>
 
         {/* Gantt Chart */}
         <Card>
-          <CardHeader className="flex items-center justify-between">
-            <div>
-              <CardTitle>Gantt Chart</CardTitle>
-              <CardDescription>
-                Timeline of orders, manufacturing orders, and tasks
-              </CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm">
-                <Filter className="h-4 w-4 mr-2" />
-                Filter
-              </Button>
-              <Button variant="outline" size="sm">
-                <Download className="h-4 w-4 mr-2" />
-                Export
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {/* Visual Gantt Chart with Timeline Bars */}
-              {loading ? (
-                <div className="flex items-center justify-center h-[400px]">
-                  <p className="text-muted-foreground">Loading Gantt chart...</p>
-                </div>
-              ) : !tasks || tasks.length === 0 ? (
-                <div className="flex items-center justify-center h-[400px]">
-                  <p className="text-muted-foreground">No tasks to display</p>
-                </div>
-              ) : (
-                <div className="border rounded-lg overflow-hidden">
-                  <div className="bg-muted p-4 border-b">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-semibold">Production Timeline</h3>
-                        <p className="text-sm text-muted-foreground">
-                          Visual timeline showing {tasks.length} tasks across all orders
-                        </p>
+          <CardContent className="p-0 overflow-hidden">
+            <div className="overflow-x-auto">
+              <div className="min-w-[1200px]" ref={chartContainerRef as any}>
+                {/* Timeline Header */}
+                <div className="flex border-b bg-muted/50" style={{ height: headerHeight }}>
+                  <div className="w-[350px] shrink-0 p-3 border-r font-medium text-sm">
+                    Task Name
+                  </div>
+                  <div className="flex-1 relative">
+                    {weeks.map((week, i) => (
+                      <div
+                        key={i}
+                        className="absolute text-xs text-muted-foreground top-3"
+                        style={{ left: `${week.position}%` }}
+                      >
+                        {week.label}
                       </div>
-                      <div className="flex gap-2 text-xs">
-                        <div className="flex items-center gap-1">
-                          <div className="w-3 h-3 bg-blue-500 rounded"></div>
-                          <span>Order</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <div className="w-3 h-3 bg-purple-500 rounded"></div>
-                          <span>MO</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <div className="w-3 h-3 bg-green-500 rounded"></div>
-                          <span>Jobsheet</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <div className="w-3 h-3 bg-orange-500 rounded"></div>
-                          <span>Task</span>
-                        </div>
-                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Task Rows */}
+                <div className="relative" style={{ height: chartHeight - headerHeight }}>
+                  {/* Background grid */}
+                  <div className="absolute inset-0 flex">
+                    <div className="w-[350px] shrink-0" />
+                    <div className="flex-1 flex">
+                      {weeks.map((_, i) => (
+                        <div key={i} className="flex-1 border-r border-muted" />
+                      ))}
                     </div>
                   </div>
-                  
-                  {/* Gantt Chart Body */}
-                  <div className="overflow-x-auto">
-                    <div className="min-w-[1200px] p-4">
-                      {/* Timeline Header */}
-                      <div className="flex mb-2">
-                        <div className="w-96 shrink-0"></div>
-                        <div className="flex-1 relative">
-                          <div className="flex justify-between text-xs text-muted-foreground pb-2 border-b">
-                            {['Week 1', 'Week 2', 'Week 3', 'Week 4', 'Week 5', 'Week 6', 'Week 7', 'Week 8'].map((week, i) => (
-                              <div key={i} className="flex-1 text-center">{week}</div>
-                            ))}
+
+                  {/* Today line */}
+                  <div
+                    className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20"
+                    style={{ left: `calc(350px + (100% - 350px) * ${todayPercent} / 100)` }}
+                  >
+                    <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-red-500 rounded-full" />
+                    <div className="absolute top-0 left-2 text-xs text-red-500 whitespace-nowrap">Today</div>
+                  </div>
+
+                  {/* Dependency arrows */}
+                  {showDeps && dependencies.length > 0 && svgRef.current && (
+                    <svg
+                      ref={svgRef}
+                      className="absolute top-0 left-[350px] pointer-events-none z-10"
+                      style={{ width: 'calc(100% - 350px)', height: chartHeight - headerHeight }}
+                    >
+                      <defs>
+                        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                          <polygon points="0 0, 10 3.5, 0 7" fill="#9333ea" />
+                        </marker>
+                      </defs>
+                    </svg>
+                  )}
+
+                  {/* Task rows and bars */}
+                  {visibleTasks.map((task, index) => {
+                    const { leftPercent, widthPercent, duration } = getTaskPosition(task, timelineStart, totalDays)
+                    const top = index * rowHeight
+                    const isExpanded = expandedIds.has(task.id)
+                    const hasChildren = tasks.some(t => 
+                      (task.type === 'order' && t.type === 'mo' && t.parent === task.rawId) ||
+                      (task.type === 'mo' && t.type === 'jobsheet' && t.parent === task.rawId) ||
+                      (task.type === 'jobsheet' && t.type === 'task' && t.parent === task.rawId)
+                    )
+
+                    const isCompleted = task.progress >= 100
+                    const endDate = new Date(task.endDate)
+                    const isDelayed = endDate < new Date() && !isCompleted
+                    const isCritical = task.isCritical || autoScheduled.some(s => s.isCritical && s.taskId === task.rawId)
+                    const depCount = dependencies.filter(d => d.toId === task.id).length
+
+                    return (
+                      <div key={task.id} className="absolute left-0 right-0 flex" style={{ top, height: rowHeight }}>
+                        {/* Task name */}
+                        <div 
+                          className="w-[350px] shrink-0 p-2 border-r border-b flex items-center gap-1 cursor-pointer hover:bg-muted/50"
+                          style={{ paddingLeft: `${task.level * 16 + 8}px` }}
+                          onClick={() => {
+                            const newExpanded = new Set(expandedIds)
+                            if (isExpanded) newExpanded.delete(task.id)
+                            else newExpanded.add(task.id)
+                            setExpandedIds(newExpanded)
+                          }}
+                        >
+                          {hasChildren && (
+                            <span className="w-4 h-4 flex items-center justify-center text-muted-foreground">
+                              {isExpanded ? '▼' : '▶'}
+                            </span>
+                          )}
+                          {!hasChildren && <span className="w-4" />}
+                          <Badge
+                            variant="outline"
+                            className={`text-xs ${
+                              task.type === 'order' ? 'border-blue-500 text-blue-700' :
+                              task.type === 'mo' ? 'border-purple-500 text-purple-700' :
+                              task.type === 'jobsheet' ? 'border-green-500 text-green-700' :
+                              'border-orange-500 text-orange-700'
+                            }`}
+                          >
+                            {task.type === 'order' ? 'O' : task.type === 'mo' ? 'MO' : task.type === 'jobsheet' ? 'JS' : 'T'}
+                          </Badge>
+                          <span className="truncate text-sm">{task.name}</span>
+                          {depCount > 0 && (
+                            <Link2 className="h-3 w-3 text-purple-600 shrink-0" title={`${depCount} predecessor(s)`} />
+                          )}
+                          <span className="text-xs text-muted-foreground ml-auto">{task.progress}%</span>
+                        </div>
+
+                        {/* Task bar */}
+                        <div 
+                          className="flex-1 relative border-b"
+                          data-task-id={task.id}
+                          data-task-index={index}
+                        >
+                          <div
+                            className={`absolute top-2 h-6 rounded-md shadow-sm transition-all cursor-pointer flex items-center ${
+                              isCompleted ? 'bg-green-600' :
+                              isDelayed ? 'bg-red-500' :
+                              isCritical ? 'bg-amber-500 ring-2 ring-amber-300' :
+                              task.type === 'order' ? 'bg-blue-500' :
+                              task.type === 'mo' ? 'bg-purple-500' :
+                              task.type === 'jobsheet' ? 'bg-green-500' :
+                              'bg-orange-500'
+                            }`}
+                            style={{
+                              left: `${leftPercent}%`,
+                              width: `${widthPercent}%`,
+                              minWidth: '20px',
+                            }}
+                            title={`${task.name}\n${task.startDate} → ${task.endDate}\n${duration} days\nProgress: ${task.progress}%`}
+                          >
+                            <div
+                              className="h-full bg-white/25 rounded-l-md"
+                              style={{ width: `${task.progress}%` }}
+                            />
+                            {widthPercent > 10 && (
+                              <span className="absolute inset-0 flex items-center justify-center text-xs text-white font-medium px-1 truncate">
+                                {duration}d
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
-
-                      {/* Calculate timeline dates */}
-                      {(() => {
-                        const { start: timelineStart, end: timelineEnd } = getTimelineRange()
-                        const today = new Date()
-                        const totalDays = Math.max(1, (timelineEnd.getTime() - timelineStart.getTime()) / (1000 * 60 * 60 * 24))
-                        const todayOffset = (today.getTime() - timelineStart.getTime()) / (1000 * 60 * 60 * 24)
-                        const todayPercent = Math.max(0, Math.min(100, (todayOffset / totalDays) * 100))
-
-                        const hierarchicalTasks = getHierarchicalTasks()
-                        
-                        // Calculate number of weeks for header
-                        const numWeeks = Math.ceil(totalDays / 7)
-
-                        return (
-                          <>
-                            {/* Hierarchical Task Rows */}
-                            <div className="space-y-1 relative">
-                              {/* Dependency arrows overlay */}
-                              {showDependencies && renderDependencyArrows(hierarchicalTasks, timelineStart, totalDays)}
-                              
-                              {hierarchicalTasks.map((item: any, index: number) => {
-                                // Calculate position and width based on ACTUAL dates
-                                const startDate = new Date(item.plannedStartDate || item.clockedInAt || timelineStart)
-                                const endDate = new Date(item.plannedEndDate || item.clockedOutAt || timelineEnd)
-                                
-                                // Ensure we have valid dates
-                                const validStart = isNaN(startDate.getTime()) ? timelineStart : startDate
-                                const validEnd = isNaN(endDate.getTime()) ? timelineEnd : endDate
-                                
-                                // Calculate position as percentage
-                                const startOffset = (validStart.getTime() - timelineStart.getTime()) / (1000 * 60 * 60 * 24)
-                                const duration = Math.max(1, (validEnd.getTime() - validStart.getTime()) / (1000 * 60 * 60 * 24))
-                                
-                                const leftPercent = Math.max(0, (startOffset / totalDays) * 100)
-                                const widthPercent = Math.max(1, (duration / totalDays) * 100)
-                                
-                                const isCompleted = item.status === 'COMPLETED'
-                                const isDelayed = validEnd < today && !isCompleted
-                                const isExpanded = expandedGroups[item.id] !== false  // Use item.id directly
-                                
-                                // Indentation based on level
-                                const paddingLeft = item.level * 24
-                                
-                                return (
-                                  <div key={`${item.type}-${item.id}-${index}`} className="flex items-center group hover:bg-muted/30 rounded-lg transition-colors">
-                                    {/* Task Info with Hierarchy */}
-                                    <div 
-                                      className="shrink-0 p-2 border-r pr-4 flex items-center gap-2"
-                                      style={{ width: `${400 + paddingLeft}px`, paddingLeft: `${paddingLeft}px` }}
-                                    >
-                                      {/* Expand/Collapse Button */}
-                                      {item.hasChildren ? (
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation()
-                                            toggleGroup(item.id)  // Use item.id directly (already prefixed)
-                                          }}
-                                          className="w-6 h-6 flex items-center justify-center hover:bg-muted rounded transition-colors"
-                                        >
-                                          {isExpanded ? (
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                            </svg>
-                                          ) : (
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                            </svg>
-                                          )}
-                                        </button>
-                                      ) : (
-                                        <div className="w-6" />
-                                      )}
-                                      
-                                      {/* Type Badge */}
-                                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium shrink-0 ${
-                                        item.type === 'order' ? 'bg-blue-100 text-blue-800' :
-                                        item.type === 'mo' ? 'bg-purple-100 text-purple-800' :
-                                        item.type === 'jobsheet' ? 'bg-green-100 text-green-800' :
-                                        'bg-orange-100 text-orange-800'
-                                      }`}>
-                                        {item.type === 'order' ? 'Order' :
-                                         item.type === 'mo' ? 'MO' :
-                                         item.type === 'jobsheet' ? 'JS' : 'Task'}
-                                      </span>
-                                      
-                                      {/* Task Name */}
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                          <span className={`font-medium text-sm truncate ${
-                                            item.level === 0 ? 'text-base font-semibold' :
-                                            item.level === 1 ? 'font-medium' :
-                                            'font-normal'
-                                          }`}>
-                                            {item.name}
-                                          </span>
-                                          {item.type === 'order' && (
-                                            <span className="text-xs text-muted-foreground">({item.customerName})</span>
-                                          )}
-                                        </div>
-                                        <div className="flex items-center gap-2 text-xs">
-                                          <span className="text-muted-foreground">
-                                            {item.type === 'order' ? item.orderNumber :
-                                             item.type === 'mo' ? item.moNumber :
-                                             item.type === 'jobsheet' ? item.jsNumber :
-                                             item.taskNumber}
-                                          </span>
-                                          {item.machine?.name && (
-                                            <span className="flex items-center gap-1 text-muted-foreground">
-                                              <Wrench className="w-3 h-3" />
-                                              {item.machine.name}
-                                            </span>
-                                          )}
-                                          <span className={`font-medium ${isDelayed ? 'text-red-600' : ''}`}>
-                                            {item.progressPercent}%
-                                          </span>
-                                          {item.dependencies && item.dependencies.length > 0 && (
-                                            <span className="flex items-center gap-1 text-purple-600" title={`Depends on ${item.dependencies.length} predecessor(s)`}>
-                                              <Link2 className="w-3 h-3" />
-                                              <span className="text-xs">{item.dependencies.length}</span>
-                                            </span>
-                                          )}
-                                          <span className="text-muted-foreground">
-                                            {validStart.toLocaleDateString()} - {validEnd.toLocaleDateString()}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {/* Timeline Bar */}
-                                    <div className="flex-1 relative h-10">
-                                      {/* Grid lines */}
-                                      <div className="absolute inset-0 flex">
-                                        {Array.from({ length: numWeeks }).map((_, i) => (
-                                          <div key={i} className="flex-1 border-r border-muted"></div>
-                                        ))}
-                                      </div>
-
-                                      {/* Task Bar - WIDTH NOW REFLECTS ACTUAL DURATION */}
-                                      <div
-                                        className={`absolute top-1/2 -translate-y-1/2 h-7 rounded-md shadow-sm transition-all cursor-pointer ${
-                                          isCompleted ? 'bg-green-500' :
-                                          isDelayed ? 'bg-red-500' :
-                                          item.type === 'order' ? 'bg-blue-500' :
-                                          item.type === 'mo' ? 'bg-purple-500' :
-                                          item.type === 'jobsheet' ? 'bg-green-400' :
-                                          'bg-orange-500'
-                                        } ${item.status === 'RUNNING' ? 'animate-pulse' : ''}`}
-                                        style={{
-                                          left: `${leftPercent}%`,
-                                          width: `${widthPercent}%`,
-                                          minWidth: '8px',
-                                        }}
-                                        title={`${item.name}\n${item.progressPercent}% complete\n${validStart.toLocaleDateString()} - ${validEnd.toLocaleDateString()}\nDuration: ${Math.round(duration)} days`}
-                                      >
-                                        {/* Progress fill */}
-                                        <div
-                                          className="absolute inset-0 bg-white/20 rounded-md"
-                                          style={{ width: `${item.progressPercent}%` }}
-                                        ></div>
-                                        
-                                        {/* Duration label */}
-                                        {widthPercent > 8 && (
-                                          <div className="absolute inset-0 flex items-center justify-center px-2">
-                                            <span className="text-xs font-medium text-white truncate drop-shadow-md">
-                                              {Math.round(duration)}d ({item.progressPercent}%)
-                                            </span>
-                                          </div>
-                                        )}
-                                      </div>
-
-                                      {/* Today marker */}
-                                      <div
-                                        className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10"
-                                        style={{ left: `${todayPercent}%` }}
-                                      >
-                                        <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-red-500 rounded-full"></div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                            </div>
-
-                            {/* Legend */}
-                            <div className="mt-6 p-4 bg-muted/50 rounded-lg">
-                              <div className="flex items-center justify-between text-sm">
-                                <div className="flex items-center gap-4">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 bg-blue-500 rounded"></div>
-                                    <span>Order</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 bg-purple-500 rounded"></div>
-                                    <span>MO</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 bg-green-500 rounded"></div>
-                                    <span>Jobsheet</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 bg-orange-500 rounded"></div>
-                                    <span>Task</span>
-                                  </div>
-                                  <Separator orientation="vertical" className="h-4" />
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 bg-green-500 rounded"></div>
-                                    <span>Completed</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 bg-red-500 rounded"></div>
-                                    <span>Delayed</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-0.5 h-4 bg-red-500"></div>
-                                    <span>Today</span>
-                                  </div>
-                                  {showDependencies && dependencies.length > 0 && (
-                                    <>
-                                      <Separator orientation="vertical" className="h-4" />
-                                      <div className="flex items-center gap-2">
-                                        <Link2 className="w-4 h-4 text-purple-600" />
-                                        <span>Dependencies</span>
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
-                                <div className="text-muted-foreground">
-                                  Timeline: {timelineStart.toLocaleDateString()} → {timelineEnd.toLocaleDateString()}
-                                </div>
-                              </div>
-                            </div>
-                          </>
-                        )
-                      })()}
-                    </div>
-                  </div>
+                    )
+                  })}
                 </div>
-              )}
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Legend */}
+        {/* Info about auto-scheduling */}
         <Card>
           <CardHeader>
-            <CardTitle>Legend</CardTitle>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Info className="h-5 w-5" />
+              How Auto-Scheduling Works
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-blue-100 border-blue-300 rounded"></div>
-                <span>Order</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-purple-100 border-purple-300 rounded"></div>
-                <span>Manufacturing Order</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-green-100 border-green-300 rounded"></div>
-                <span>Jobsheet</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-orange-100 border-orange-300 rounded"></div>
-                <span>Task</span>
-              </div>
+          <CardContent className="text-sm text-muted-foreground space-y-2">
+            <p>
+              <strong>Auto-Schedule Tasks</strong> uses Critical Path Method (CPM) to calculate optimal task dates based on dependencies:
+            </p>
+            <ul className="list-disc list-inside space-y-1">
+              <li><strong>FS (Finish-to-Start)</strong>: Successor starts after predecessor finishes</li>
+              <li><strong>SS (Start-to-Start)</strong>: Successor starts when predecessor starts</li>
+              <li><strong>FF (Finish-to-Finish)</strong>: Successor finishes when predecessor finishes</li>
+              <li><strong>Lag (+10d)</strong>: Adds delay between predecessor and successor</li>
+            </ul>
+            <p className="mt-2">
+              Tasks on the <span className="text-amber-600 font-medium">critical path</span> (zero slack) are highlighted in amber.
+              These tasks directly affect the project end date.
+            </p>
+            <div className="mt-4 p-3 bg-muted rounded-lg">
+              <p className="font-medium">Current Dependencies:</p>
+              {dependencies.length === 0 ? (
+                <p className="text-muted-foreground">No dependencies defined. <a href="/planning/dependencies" className="text-primary underline">Add dependencies</a> to enable auto-scheduling.</p>
+              ) : (
+                <ul className="mt-2 space-y-1">
+                  {dependencies.slice(0, 5).map(dep => (
+                    <li key={dep.id} className="flex items-center gap-2">
+                      <span className="font-mono text-xs">{dep.fromId}</span>
+                      <ArrowRight className="h-3 w-3" />
+                      <span className="font-mono text-xs">{dep.toId}</span>
+                      <Badge variant="outline" className="text-xs">{dep.type.replace(/_/g, '-')}</Badge>
+                      {dep.lagDays !== 0 && (
+                        <span className="text-xs">({dep.lagDays > 0 ? '+' : ''}{dep.lagDays}d)</span>
+                      )}
+                    </li>
+                  ))}
+                  {dependencies.length > 5 && (
+                    <li className="text-muted-foreground">... and {dependencies.length - 5} more</li>
+                  )}
+                </ul>
+              )}
             </div>
           </CardContent>
         </Card>

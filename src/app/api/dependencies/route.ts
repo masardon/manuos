@@ -201,10 +201,11 @@ export async function POST(request: NextRequest) {
         )
       }
       
-      // Check for existing dependency
+      // Check for existing ACTIVE dependency
       const existing = await db.taskDependency.findFirst({
         where: {
           tenantId: user.tenantId,
+          isActive: true,  // Only check active dependencies
           predecessorTaskId: data.predecessorTaskId || null,
           successorTaskId: data.successorTaskId || null,
           predecessorJobsheetId: data.predecessorJobsheetId || null,
@@ -269,6 +270,7 @@ export async function DELETE(request: NextRequest) {
     const jobsheetId = searchParams.get('jobsheetId')
     const moId = searchParams.get('moId')
     const orderId = searchParams.get('orderId')
+    const hardDelete = searchParams.get('hard') === 'true'
 
     if (dependencyId) {
       // Delete specific dependency
@@ -280,15 +282,22 @@ export async function DELETE(request: NextRequest) {
         return NextResponse.json({ error: 'Dependency not found' }, { status: 404 })
       }
       
-      // Soft delete by setting isActive to false
-      await db.taskDependency.update({
-        where: { id: dependencyId },
-        data: { isActive: false }
-      })
+      if (hardDelete) {
+        // Hard delete - permanently remove
+        await db.taskDependency.delete({
+          where: { id: dependencyId }
+        })
+      } else {
+        // Soft delete by setting isActive to false
+        await db.taskDependency.update({
+          where: { id: dependencyId },
+          data: { isActive: false }
+        })
+      }
       
       return NextResponse.json({
         success: true,
-        message: 'Dependency deleted successfully'
+        message: hardDelete ? 'Dependency permanently deleted' : 'Dependency deleted successfully'
       })
     } else if (taskId || jobsheetId || moId || orderId) {
       // Delete all dependencies for an entity

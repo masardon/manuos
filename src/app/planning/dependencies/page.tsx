@@ -163,19 +163,25 @@ export default function DependenciesPage() {
   }
 
   const deleteDependency = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this dependency?')) return
+    if (!confirm('Are you sure you want to permanently delete this dependency?')) return
 
     setDeleting(id)
     try {
-      const response = await fetch(`/api/dependencies?id=${id}`, {
+      // Hard delete to permanently remove
+      const response = await fetch(`/api/dependencies?id=${id}&hard=true`, {
         method: 'DELETE'
       })
 
       if (response.ok) {
         await fetchDependencies()
+        alert('Dependency permanently deleted. You can now create a new one with the same tasks.')
+      } else {
+        const error = await response.json()
+        alert(`Error: ${error.error}`)
       }
     } catch (error) {
       console.error('Error deleting dependency:', error)
+      alert('Failed to delete dependency')
     } finally {
       setDeleting(null)
     }

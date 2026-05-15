@@ -36,6 +36,16 @@ export async function GET(request: NextRequest) {
                         id: true,
                         name: true,
                         code: true,
+                        status: true,
+                      },
+                    },
+                    breakdown: {
+                      select: {
+                        id: true,
+                        type: true,
+                        description: true,
+                        estimatedRecoveryDate: true,
+                        resolved: true,
                       },
                     },
                     // Include dependencies for tasks
@@ -258,6 +268,18 @@ export async function GET(request: NextRequest) {
                     taskNumber: task.taskNumber,
                     machineId: task.machineId,
                     machine: task.machine,
+                    // Breakdown info
+                    breakdownAt: task.breakdownAt,
+                    breakdownNote: task.breakdownNote,
+                    estimatedRecoveryDate: task.estimatedRecoveryDate,
+                    breakdown: task.breakdown ? {
+                      id: task.breakdown.id,
+                      type: task.breakdown.type,
+                      description: task.breakdown.description,
+                      estimatedRecoveryDate: task.breakdown.estimatedRecoveryDate,
+                      resolved: task.breakdown.resolved,
+                    } : null,
+                    isPaused: task.status === 'PAUSED',
                     dependencies: taskDependencies,
                   })
                 }

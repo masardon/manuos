@@ -131,7 +131,7 @@ model Order {
   customerPhone       String?
   workflowId          String?
   currentStateId      String?
-  status              OrderStatus            @default(DRAFT)
+  status              OrderStatus            @default("DRAFT")
   plannedStartDate    DateTime?
   plannedEndDate      DateTime?
   actualStartDate     DateTime?
@@ -166,7 +166,7 @@ model ManufacturingOrder {
   moNumber                String
   name                    String
   description             String?
-  type                    MOType                 @default(MAIN)
+  type                    MOType                 @default("MAIN")
   isOutsourced            Boolean                @default(false)
   outsourcedType          String?
   vendorId                String?
@@ -178,7 +178,7 @@ model ManufacturingOrder {
   vendorNotes             String?
   workflowId              String?
   currentStateId          String?
-  status                  MOStatus               @default(PLANNED)
+  status                  MOStatus               @default("PLANNED")
   plannedStartDate        DateTime?
   plannedEndDate          DateTime?
   actualStartDate         DateTime?
@@ -224,11 +224,11 @@ model Jobsheet {
   jsNumber                String
   name                    String
   description             String?
-  type                    JobsheetType       @default(SINGLE_PART)
+  type                    JobsheetType       @default("SINGLE_PART")
   preparedBy              String?
   checkedBy               String?
   approvedBy              String?
-  status                  JobsheetStatus     @default(PREPARING)
+  status                  JobsheetStatus     @default("PREPARING")
   dependsOn               String?
   plannedStartDate        DateTime?
   plannedEndDate          DateTime?
@@ -262,7 +262,7 @@ model MachiningTask {
   name                    String
   description             String?
   machineId               String?
-  status                  TaskStatus               @default(PENDING)
+  status                  TaskStatus               @default("PENDING")
   plannedHours            Float?
   actualHours             Float?
   clockedInAt             DateTime?
@@ -311,7 +311,7 @@ model TaskDependency {
   successorJobsheetId   String?
   successorMoId         String?
   successorOrderId      String?
-  dependencyType        DependencyType      @default(FINISH_TO_START)
+  dependencyType        DependencyType      @default("FINISH_TO_START")
   lagDays               Float               @default(0)
   isActive              Boolean             @default(true)
   notes                 String?
@@ -348,7 +348,7 @@ model ProductionOutput {
   goodQty               Float                  @default(0)
   reworkQty             Float                  @default(0)
   scrapQty              Float                  @default(0)
-  status                ProductionOutputStatus @default(IN_PROGRESS)
+  status                ProductionOutputStatus @default("IN_PROGRESS")
   materialConsumed      String?
   startedAt             DateTime?
   completedAt           DateTime?
@@ -396,7 +396,7 @@ model JobsheetMaterial {
   sourceBatch           String?
   sourceShelf           String?
   sourceLocation        String?
-  status                JobsheetMaterialStatus   @default(ALLOCATED)
+  status                JobsheetMaterialStatus   @default("ALLOCATED")
   notes                 String?
   allocatedBy           String?
   allocatedAt           DateTime                 @default(now())
@@ -422,7 +422,7 @@ model TaskMaterialAllocation {
   wastedQty          Float              @default(0)
   remainingQty       Float              @default(0)
   unit               String?
-  status             TaskMaterialStatus @default(ALLOCATED)
+  status             TaskMaterialStatus @default("ALLOCATED")
   consumedAt         DateTime?
   consumedBy         String?
   wasteReason        String?
@@ -446,7 +446,7 @@ model Machine {
   model             String?
   location          String?
   type              String?
-  status            MachineStatus   @default(IDLE)
+  status            MachineStatus   @default("IDLE")
   capacity          Float?
   lastMaintenanceAt DateTime?
   nextMaintenanceAt DateTime?
@@ -469,7 +469,7 @@ model Breakdown {
   machineId              String
   reportedBy             String
   reportedAt             DateTime      @default(now())
-  type                   BreakdownType @default(MECHANICAL)
+  type                   BreakdownType @default("MECHANICAL")
   description            String
   notes                  String?
   estimatedRecoveryDate  DateTime?
@@ -503,7 +503,7 @@ model MaterialRequirement {
   requestedQty         Float                     @default(0)
   receivedQty          Float                     @default(0)
   consumedQty          Float                     @default(0)
-  status               MaterialRequirementStatus @default(PLANNED)
+  status               MaterialRequirementStatus @default("PLANNED")
   priority             Int                       @default(5)
   requiredDate         DateTime
   plannedOrderId       String?
@@ -536,7 +536,7 @@ model PurchaseRequest {
   prNumber          String
   title             String
   description       String?
-  status            PurchaseRequestStatus @default(DRAFT)
+  status            PurchaseRequestStatus @default("DRAFT")
   priority          Int                   @default(5)
   sourceType        String
   sourceMoId        String?
@@ -584,7 +584,7 @@ model PurchaseRequestItem {
   unit                  String?
   supplierId            String?
   supplierPartNumber    String?
-  status                PRItemStatus         @default(PENDING)
+  status                PRItemStatus         @default("PENDING")
   receivedQty           Float                @default(0)
   notes                 String?
   createdAt             DateTime             @default(now())
@@ -611,7 +611,7 @@ model Supplier {
   address              String?
   city                 String?
   country              String?
-  supplierType         SupplierType          @default(MATERIAL)
+  supplierType         SupplierType          @default("MATERIAL")
   vendorTier           String?
   capabilities         String?
   certifications       String?
@@ -654,7 +654,7 @@ model VendorOrder {
   description        String?
   referenceNumber    String?
   vendorQuoteNumber  String?
-  outsourceType      OutsourceType       @default(FULL)
+  outsourceType      OutsourceType       @default("FULL")
   workDescription    String
   quantity           Float
   unit               String?
@@ -667,7 +667,7 @@ model VendorOrder {
   actualDeliveryDate DateTime?
   vendorLeadTimeDays Int?
   daysRemaining      Int?
-  status             VendorOrderStatus   @default(DRAFT)
+  status             VendorOrderStatus   @default("DRAFT")
   qualityRequired    Boolean             @default(true)
   qualityPassed      Boolean?
   qcNotes            String?
@@ -740,7 +740,7 @@ model VendorShipment {
   trackingNumber   String?
   quantity         Float
   unit             String?
-  status           ShipmentStatus @default(SHIPPED)
+  status           ShipmentStatus @default("SHIPPED")
   shippedDate      DateTime
   expectedDate     DateTime?
   receivedDate     DateTime?
@@ -770,7 +770,7 @@ model VendorInvoice {
   currency      String        @default("IDR")
   paidAmount    Float         @default(0)
   balanceDue    Float
-  status        InvoiceStatus @default(PENDING)
+  status        InvoiceStatus @default("PENDING")
   paymentDate   DateTime?
   paymentMethod String?
   paymentRef    String?
@@ -791,7 +791,7 @@ model Location {
   code              String
   name              String
   description       String?
-  type              LocationType       @default(WAREHOUSE)
+  type              LocationType       @default("WAREHOUSE")
   parentLocationId  String?
   capacity          Int?
   area              Float?
@@ -854,13 +854,13 @@ model MaterialHandoff {
   receivedBy     String?
   fromPicUserId  String?
   toPicUserId    String?
-  handoffType    HandoffType           @default(STOCK_TRANSFER)
+  handoffType    HandoffType           @default("STOCK_TRANSFER")
   referenceType  String?
   referenceId    String?
   moId           String?
   jobsheetId     String?
   taskId         String?
-  status         HandoffStatus         @default(PENDING)
+  status         HandoffStatus         @default("PENDING")
   requestedAt    DateTime              @default(now())
   handedAt       DateTime?
   receivedAt     DateTime?
@@ -935,7 +935,7 @@ model Inventory {
   shelfId              String?
   location             String?
   shelf                String?
-  status               MaterialStatus         @default(AVAILABLE)
+  status               MaterialStatus         @default("AVAILABLE")
   currentProcess       String?
   supplierId           String?
   supplierRef          String?
@@ -986,7 +986,7 @@ model InventoryReservation {
   moId                  String?
   materialRequirementId String?
   quantity              Float
-  status                ReservationStatus    @default(ALLOCATED)
+  status                ReservationStatus    @default("ALLOCATED")
   reservedAt            DateTime             @default(now())
   releasedAt            DateTime?
   consumedAt            DateTime?
@@ -1050,7 +1050,7 @@ model PurchaseOrder {
   tenantId     String
   supplierId   String
   poNumber     String
-  status       POStatus               @default(DRAFT)
+  status       POStatus               @default("DRAFT")
   totalAmount  Float                  @default(0)
   currency     String                 @default("IDR")
   orderDate    DateTime               @default(now())
@@ -1086,7 +1086,7 @@ model PurchaseOrderItem {
   totalPrice      Float
   receivedQty     Float         @default(0)
   unit            String?
-  status          POItemStatus  @default(PENDING)
+  status          POItemStatus  @default("PENDING")
   notes           String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -1279,7 +1279,7 @@ model QualityCheck {
   batch                    String?
   quantity                 Float
   unit                     String?
-  status                   QCStatus            @default(PENDING)
+  status                   QCStatus            @default("PENDING")
   passQuantity             Float               @default(0)
   failQuantity             Float               @default(0)
   reworkQuantity           Float               @default(0)
@@ -1370,7 +1370,7 @@ model ReworkOrder {
   requiredMaterials    String?
   estimatedCost        Float?
   estimatedHours       Float?
-  status               ReworkStatus        @default(PENDING)
+  status               ReworkStatus        @default("PENDING")
   completionPercentage Float               @default(0)
   assignedToId         String?
   assignedAt           DateTime?
@@ -1434,7 +1434,7 @@ model ReworkTask {
   machineId      String?
   estimatedHours Float?
   actualHours    Float?
-  status         ReworkTaskStatus @default(PENDING)
+  status         ReworkTaskStatus @default("PENDING")
   assignedToId   String?
   startedAt      DateTime?
   completedAt    DateTime?

@@ -1,100 +1,84 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth } from '@/lib/middleware/auth'
-import { MachineStatus } from '@prisma/client'
+import { MachineStatus, TaskStatus } from '@prisma/client'
+
+const TENANT_ID = 'tenant_ypti'
 
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = requireAuth(request)
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
-    }
-
-    const tenantId = user.tenantId
-    const userId = user.id
     const { id: breakdownId } = await context.params
+    const body = await request.json().catch(() => ({}))
 
-    // Get the breakdown
     const breakdown = await db.breakdown.findFirst({
-      where: {
-        id: breakdownId,
-        tenantId,
-      },
+      where: { id: breakdownId, tenantId: TENANT_ID },
       include: {
-        machine: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            status: true,
-          },
-        },
+        machine: { select: { id: true, name: true, code: true, status: true } },
       },
     })
 
     if (!breakdown) {
-      return NextResponse.json(
-        { error: 'Breakdown not found' },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: 'Breakdown not found' }, { status: 404 })
     }
 
     if (breakdown.resolved) {
-      return NextResponse.json(
-        { error: 'Breakdown is already resolved' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Breakdown is already resolved' }, { status: 400 })
     }
 
-    // Update breakdown
+    const resolution = body.resolution || 'Machine restored to service'
+
+    // Resolve the breakdown
     const updatedBreakdown = await db.breakdown.update({
       where: { id: breakdownId },
       data: {
         resolved: true,
         resolvedAt: new Date(),
-        resolvedBy: userId,
-        resolution: 'Machine restored to service',
+        resolvedBy: body.resolvedBy || 'system',
+        resolution,
       },
     })
 
     // Update machine status back to IDLE
-    if (breakdown.machine) {
-      await db.machine.update({
-        where: { id: breakdown.machineId },
-        data: { status: MachineStatus.IDLE },
-      })
-    }
+    await db.machine.update({
+      where: { id: breakdown.machineId },
+      data: { status: MachineStatus.IDLE, notes: null },
+    })
 
-    // Resolve affected task if any
-    if (breakdown.affectedTaskId) {
-      await db.machiningTask.update({
-        where: {
-          id: breakdown.affectedTaskId,
-          tenantId,
-        },
+    // Find all tasks that were paused due to this breakdown
+    const pausedTasks = await db.machiningTask.findMany({
+      where: {
+        tenantId: TENANT_ID,
+        breakdownId: breakdownId,
+        status: TaskStatus.PAUSED,
+      },
+    })
+
+    const resumedTasks = []
+    for (const task of pausedTasks) {
+      const updated = await db.machiningTask.update({
+        where: { id: task.id },
         data: {
-          resolvedAt: new Date(),
+          status: TaskStatus.RUNNING,
+          breakdownAt: null,
           breakdownNote: null,
+          breakdownId: null,
+          estimatedRecoveryDate: null,
+          resolvedAt: new Date(),
         },
       })
+      resumedTasks.push(updated)
     }
 
     return NextResponse.json({
       success: true,
       data: updatedBreakdown,
-      message: 'Breakdown resolved successfully',
+      resumedTasks: resumedTasks.length,
+      message: `Breakdown resolved. ${resumedTasks.length} task(s) resumed.`,
     })
   } catch (error) {
     console.error('Error resolving breakdown:', error)
-    return NextResponse.json(
-      { error: 'Failed to resolve breakdown' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to resolve breakdown' }, { status: 500 })
   }
 }

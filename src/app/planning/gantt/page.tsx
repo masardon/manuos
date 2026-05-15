@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { 
   Calendar, RefreshCw, Link2, GitBranch, AlertCircle, 
-  CheckCircle, ArrowRight, Info
+  CheckCircle, ArrowRight, Info, AlertTriangle
 } from 'lucide-react'
 
 // Disable static generation
@@ -29,6 +29,18 @@ interface Task {
   level: number
   isCritical?: boolean
   slackDays?: number
+  // Breakdown info
+  breakdownAt?: string | null
+  breakdownNote?: string | null
+  estimatedRecoveryDate?: string | null
+  breakdown?: {
+    id: string
+    type: string
+    description: string
+    estimatedRecoveryDate?: string | null
+    resolved: boolean
+  } | null
+  isPaused?: boolean
 }
 
 interface Dependency {
@@ -111,6 +123,12 @@ export default function GanttChartPage() {
           status: t.status,
           parent: t.moId || t.orderId,
           level: t.level || 0,
+          // Breakdown info
+          breakdownAt: t.breakdownAt || null,
+          breakdownNote: t.breakdownNote || null,
+          estimatedRecoveryDate: t.estimatedRecoveryDate || null,
+          breakdown: t.breakdown || null,
+          isPaused: t.isPaused || t.status === 'PAUSED',
         }))
         
         setTasks(transformedTasks)
@@ -377,6 +395,12 @@ export default function GanttChartPage() {
             <div className="text-sm">
               <span className="font-medium">{dependencies.length}</span> dependencies
             </div>
+            {tasks.some(t => t.isPaused) && (
+              <Badge variant="destructive" className="animate-pulse">
+                <AlertTriangle className="h-3 w-3 mr-1" />
+                {tasks.filter(t => t.isPaused).length} task(s) paused due to breakdown
+              </Badge>
+            )}
             <Button
               variant={showDeps ? "default" : "outline"}
               size="sm"
@@ -421,6 +445,10 @@ export default function GanttChartPage() {
           <div className="flex items-center gap-1">
             <div className="w-4 h-3 bg-orange-500 rounded-sm"></div>
             <span>Task</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-3 bg-red-500 rounded-sm ring-2 ring-red-300"></div>
+            <span>Paused (Breakdown)</span>
           </div>
           <Separator orientation="vertical" className="h-4" />
           <div className="flex items-center gap-1">
@@ -549,6 +577,9 @@ export default function GanttChartPage() {
                             {task.type === 'order' ? 'O' : task.type === 'mo' ? 'MO' : task.type === 'jobsheet' ? 'JS' : 'T'}
                           </Badge>
                           <span className="truncate text-sm">{task.name}</span>
+                          {task.isPaused && (
+                            <AlertTriangle className="h-3 w-3 text-red-500 shrink-0" title="PAUSED - Machine Breakdown" />
+                          )}
                           {depCount > 0 && (
                             <Link2 className="h-3 w-3 text-purple-600 shrink-0" title={`${depCount} predecessor(s)`} />
                           )}
@@ -563,6 +594,7 @@ export default function GanttChartPage() {
                         >
                           <div
                             className={`absolute top-2 h-6 rounded-md shadow-sm transition-all cursor-pointer flex items-center ${
+                              task.isPaused ? 'bg-red-500 ring-2 ring-red-300' :
                               isCompleted ? 'bg-green-600' :
                               isDelayed ? 'bg-red-500' :
                               isCritical ? 'bg-amber-500 ring-2 ring-amber-300' :
@@ -576,7 +608,7 @@ export default function GanttChartPage() {
                               width: `${widthPercent}%`,
                               minWidth: '20px',
                             }}
-                            title={`${task.name}\n${task.startDate} → ${task.endDate}\n${duration} days\nProgress: ${task.progress}%`}
+                            title={`${task.name}\n${task.startDate} → ${task.endDate}\n${duration} days\nProgress: ${task.progress}%${task.isPaused ? '\n⚠️ PAUSED - Machine Breakdown' : ''}${task.breakdownNote ? '\n' + task.breakdownNote : ''}${task.estimatedRecoveryDate ? '\nEst. Recovery: ' + new Date(task.estimatedRecoveryDate).toLocaleDateString() : ''}`}
                           >
                             <div
                               className="h-full bg-white/25 rounded-l-md"

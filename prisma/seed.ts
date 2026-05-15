@@ -1665,7 +1665,79 @@ async function createPurchaseRequest(orders: any, inventory: any[]) {
 }
 
 // ================================================================
-// STEP 10: SYSTEM SETTINGS
+// STEP 10: BREAKDOWN (active, affecting production)
+// ================================================================
+
+async function createBreakdown(orders: any) {
+  // Get the CNC machine (has an active task TSK-2026-001)
+  const cncMachine = await prisma.machine.findFirst({
+    where: { tenantId: TENANT_ID, code: 'CNC-001' },
+  })
+
+  if (!cncMachine) {
+    console.log('  ⚠️ CNC machine not found, skipping breakdown')
+    return
+  }
+
+  // Get the active task on CNC machine
+  const activeTask = await prisma.machiningTask.findFirst({
+    where: {
+      tenantId: TENANT_ID,
+      machineId: cncMachine.id,
+      status: 'RUNNING',
+    },
+  })
+
+  // Create an active breakdown with estimated recovery
+  const breakdown = await prisma.breakdown.create({
+    data: {
+      tenantId: TENANT_ID,
+      machineId: cncMachine.id,
+      reportedBy: 'user-tech1',
+      type: 'MECHANICAL',
+      description: 'CNC spindle bearing failure - unusual vibration detected during cutting operation',
+      notes: 'Replacement bearing ordered from supplier, expected delivery tomorrow',
+      estimatedRecoveryDate: addDays(new Date(), 2),
+      resolved: false,
+      affectedTaskId: activeTask?.id || null,
+    },
+  })
+
+  // Update machine status to DOWN
+  await prisma.machine.update({
+    where: { id: cncMachine.id },
+    data: {
+      status: 'DOWN',
+      notes: 'BREAKDOWN: CNC spindle bearing failure',
+    },
+  })
+
+  // Pause the active task and link to breakdown
+  if (activeTask) {
+    await prisma.machiningTask.update({
+      where: { id: activeTask.id },
+      data: {
+        status: 'PAUSED',
+        breakdownAt: new Date(),
+        breakdownNote: 'CNC spindle bearing failure - machine DOWN',
+        breakdownId: breakdown.id,
+        estimatedRecoveryDate: addDays(new Date(), 2),
+        // Extend planned end date by 2 days
+        plannedEndDate: activeTask.plannedEndDate
+          ? addDays(new Date(activeTask.plannedEndDate), 2)
+          : addDays(new Date(), 5),
+      },
+    })
+  }
+
+  console.log(`  ⚠️ Active breakdown on ${cncMachine.code}: ${breakdown.description}`)
+  if (activeTask) {
+    console.log(`  ⏸️ Task ${activeTask.taskNumber} paused due to breakdown`)
+  }
+}
+
+// ================================================================
+// STEP 11: SYSTEM SETTINGS
 // ================================================================
 
 async function createSettings() {
@@ -1785,8 +1857,13 @@ async function main() {
     await createPurchaseRequest(orders, inventory)
     console.log('  ✅ Purchase request created')
     
-    // Step 10: Settings
-    console.log('\n📦 Step 10: Creating settings...')
+    // Step 10: Breakdown (active, affecting CNC machine)
+    console.log('\n📦 Step 10: Creating sample breakdown...')
+    await createBreakdown(orders)
+    console.log('  ✅ Breakdown created with affected tasks')
+    
+    // Step 11: Settings
+    console.log('\n📦 Step 11: Creating settings...')
     await createSettings()
     console.log('  ✅ Settings created')
     
@@ -1815,6 +1892,7 @@ async function main() {
     console.log(`   Vendor Orders: ${await prisma.vendorOrder.count()}`)
     console.log(`   Vendor Order Items: ${await prisma.vendorOrderItem.count()}`)
     console.log(`   Suppliers/Vendors: ${await prisma.supplier.count()}`)
+    console.log(`   Breakdowns: ${await prisma.breakdown.count()}`)
     
     console.log('\n🔐 Demo Login Credentials:')
     console.log('   Admin:      admin@ypti.com / demo123')

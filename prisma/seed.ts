@@ -212,20 +212,61 @@ async function createLocations() {
     createdLocations[loc.code] = location.id
   }
   
-  // Create shelves for warehouse
+  // Create shelves for warehouse with row, column, level info
   const warehouseId = createdLocations['WH-01']
-  const shelves = ['A-01', 'A-02', 'B-01', 'B-02']
+  const shelves = [
+    { code: 'A-01', name: 'Shelf A-01', row: 'A', column: '01', level: '1', capacity: 100 },
+    { code: 'A-02', name: 'Shelf A-02', row: 'A', column: '02', level: '1', capacity: 100 },
+    { code: 'B-01', name: 'Shelf B-01', row: 'B', column: '01', level: '1', capacity: 100 },
+    { code: 'B-02', name: 'Shelf B-02', row: 'B', column: '02', level: '1', capacity: 100 },
+  ]
   
-  for (const code of shelves) {
+  for (const shelf of shelves) {
     await prisma.shelf.upsert({
-      where: { tenantId_locationId_code: { tenantId: TENANT_ID, locationId: warehouseId, code } },
-      update: {},
+      where: { tenantId_locationId_code: { tenantId: TENANT_ID, locationId: warehouseId, code: shelf.code } },
+      update: {
+        row: shelf.row,
+        column: shelf.column,
+        level: shelf.level,
+        capacity: shelf.capacity,
+      },
       create: {
         tenantId: TENANT_ID,
         locationId: warehouseId,
-        code,
-        name: `Shelf ${code}`,
-        capacity: 100,
+        code: shelf.code,
+        name: shelf.name,
+        row: shelf.row,
+        column: shelf.column,
+        level: shelf.level,
+        capacity: shelf.capacity,
+      },
+    })
+  }
+  
+  // Create shelves for PPIC Rack
+  const ppicId = createdLocations['PPIC-01']
+  const ppicShelves = [
+    { code: 'P-01', name: 'PPIC Shelf 01', row: 'P', column: '01', level: '1', capacity: 50 },
+  ]
+  
+  for (const shelf of ppicShelves) {
+    await prisma.shelf.upsert({
+      where: { tenantId_locationId_code: { tenantId: TENANT_ID, locationId: ppicId, code: shelf.code } },
+      update: {
+        row: shelf.row,
+        column: shelf.column,
+        level: shelf.level,
+        capacity: shelf.capacity,
+      },
+      create: {
+        tenantId: TENANT_ID,
+        locationId: ppicId,
+        code: shelf.code,
+        name: shelf.name,
+        row: shelf.row,
+        column: shelf.column,
+        level: shelf.level,
+        capacity: shelf.capacity,
       },
     })
   }

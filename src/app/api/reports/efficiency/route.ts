@@ -1,60 +1,114 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-// GET /api/reports/efficiency - Get efficiency data
+const TENANT_ID = 'tenant_ypti'
+
 export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url)
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
+
+    const dateFilter: any = {}
+    if (startDate) dateFilter.gte = new Date(startDate)
+    if (endDate) dateFilter.lte = new Date(endDate)
+
     const machines = await db.machine.findMany({
       where: {
-        tenantId: 'tenant_ypti',
+        tenantId: TENANT_ID,
+        isActive: true,
       },
       include: {
         machiningTasks: {
+          where: startDate || endDate ? { createdAt: dateFilter } : undefined,
           select: {
             id: true,
+            taskNumber: true,
+            name: true,
+            status: true,
             plannedHours: true,
             actualHours: true,
-            status: true,
+            clockedInAt: true,
+            clockedOutAt: true,
+            jobsheet: {
+              select: {
+                jsNumber: true,
+                name: true,
+                manufacturingOrder: {
+                  select: {
+                    moNumber: true,
+                    name: true,
+                    order: {
+                      select: { orderNumber: true, customerName: true },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       },
     })
 
-    const totalPlannedHours = machines.reduce((sum, m) =>
-      sum + m.machiningTasks.reduce((s, t) => s + (t.plannedHours || 0), 0), 0
-    )
-    const totalActualHours = machines.reduce((sum, m) =>
-      sum + m.machiningTasks.reduce((s, t) => s + (t.actualHours || 0), 0), 0
-    )
-    const efficiency = totalPlannedHours > 0
-      ? (totalActualHours / totalPlannedHours) * 100
-      : 100
+    const machineData = machines.map((machine) => {
+      const plannedHours = machine.machiningTasks.reduce((sum, t) => sum + (t.plannedHours || 0), 0)
+      const actualHours = machine.machiningTasks.reduce((sum, t) => sum + (t.actualHours || 0), 0)
+      const completedTasks = machine.machiningTasks.filter(t => t.status === 'COMPLETED').length
+      const machineEfficiency = plannedHours > 0 ? (actualHours / plannedHours) * 100 : 0
+
+      return {
+        id: machine.id,
+        code: machine.code,
+        name: machine.name,
+        type: machine.type || 'N/A',
+        status: machine.status,
+        taskCount: machine.machiningTasks.length,
+        completedTasks,
+        plannedHours: plannedHours.toFixed(2),
+        actualHours: actualHours.toFixed(2),
+        efficiency: machineEfficiency.toFixed(1),
+        utilization: machine.machiningTasks.length > 0
+          ? ((completedTasks / machine.machiningTasks.length) * 100).toFixed(1)
+          : '0.0',
+        tasks: machine.machiningTasks.map(t => ({
+          taskNumber: t.taskNumber,
+          name: t.name,
+          status: t.status,
+          plannedHours: t.plannedHours,
+          actualHours: t.actualHours,
+          jobsheet: t.jobsheet.jsNumber,
+          mo: t.jobsheet.manufacturingOrder.moNumber,
+          order: t.jobsheet.manufacturingOrder.order.orderNumber,
+          customer: t.jobsheet.manufacturingOrder.order.customerName,
+        })),
+      }
+    })
+
+    const totalPlannedHours = machineData.reduce((sum, m) => sum + parseFloat(m.plannedHours), 0)
+    const totalActualHours = machineData.reduce((sum, m) => sum + parseFloat(m.actualHours), 0)
+    const totalTasks = machineData.reduce((sum, m) => sum + m.taskCount, 0)
+    const totalCompleted = machineData.reduce((sum, m) => sum + m.completedTasks, 0)
 
     return NextResponse.json({
       success: true,
-      machines: machines.map((machine) => {
-        const plannedHours = machine.machiningTasks.reduce((sum, t) => sum + (t.plannedHours || 0), 0)
-        const actualHours = machine.machiningTasks.reduce((sum, t) => sum + (t.actualHours || 0), 0)
-        const machineEfficiency = plannedHours > 0 ? (actualHours / plannedHours) * 100 : 0
-
-        return {
-          id: machine.id,
-          code: machine.code,
-          name: machine.name,
-          type: machine.type || 'N/A',
-          status: machine.status,
-          taskCount: machine.machiningTasks.length,
-          plannedHours: plannedHours.toFixed(2),
-          actualHours: actualHours.toFixed(2),
-          efficiency: machineEfficiency.toFixed(1),
-        }
-      }),
-      overall: {
+      reportType: 'efficiency',
+      generatedAt: new Date().toISOString(),
+      dateRange: { startDate, endDate },
+      machines: machineData,
+      summary: {
         totalMachines: machines.length,
-        totalTasks: machines.reduce((sum, m) => sum + m.machiningTasks.length, 0),
+        activeMachines: machineData.filter(m => m.status === 'RUNNING').length,
+        idleMachines: machineData.filter(m => m.status === 'IDLE').length,
+        totalTasks,
+        completedTasks: totalCompleted,
         plannedHours: totalPlannedHours.toFixed(2),
         actualHours: totalActualHours.toFixed(2),
-        efficiency: efficiency.toFixed(1),
+        overallEfficiency: totalPlannedHours > 0
+          ? ((totalActualHours / totalPlannedHours) * 100).toFixed(1)
+          : '0.0',
+        overallUtilization: totalTasks > 0
+          ? ((totalCompleted / totalTasks) * 100).toFixed(1)
+          : '0.0',
       },
     })
   } catch (error) {

@@ -21,28 +21,30 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       // Total inventory items
       db.inventory.count({
-        where: { tenantId, status: { not: 'SCRAPPED' } }
+        where: { tenantId, status: { notIn: ['USED', 'EXPIRED'] } }
       }),
 
-      // Low stock items
+      // Low stock items - fetch items with reorderPoint and filter
       db.inventory.findMany({
         where: {
           tenantId,
-          status: 'LOW_STOCK',
+          availableQty: { gt: 0 },
+          reorderPoint: { not: null, gt: 0 },
         },
-        select: { partNumber: true, name: true, currentQuantity: true, minimumQuantity: true },
-        take: 20,
+        select: { partNumber: true, name: true, quantity: true, reorderPoint: true },
+        orderBy: { quantity: 'asc' },
+        take: 50,
       }),
 
       // Out of stock items
       db.inventory.count({
-        where: { tenantId, status: 'OUT_OF_STOCK' }
+        where: { tenantId, quantity: { equals: 0 } }
       }),
 
       // Total inventory quantity
       db.inventory.aggregate({
         where: { tenantId },
-        _sum: { currentQuantity: true }
+        _sum: { quantity: true }
       }),
 
       // Recent transactions (last 24 hours)
@@ -63,29 +65,29 @@ export async function GET(request: NextRequest) {
       // Inventory by category
       db.inventory.groupBy({
         by: ['category'],
-        where: { tenantId },
+        where: { tenantId, category: { not: null } },
         _count: true,
-        _sum: { currentQuantity: true }
+        _sum: { quantity: true }
       }),
 
       // Inventory by location
       db.inventory.groupBy({
         by: ['locationId'],
-        where: { tenantId },
+        where: { tenantId, locationId: { not: null } },
         _count: true,
-        _sum: { currentQuantity: true }
+        _sum: { quantity: true }
       }),
 
       // Pending handoffs
       db.materialHandoff.count({
-        where: { tenantId, status: { in: ['PENDING', 'CONFIRMED', 'HANDED'] } }
+        where: { tenantId, status: { in: ['PENDING', 'IN_TRANSIT'] } }
       }),
 
       // Active reservations
       db.inventoryReservation.findMany({
         where: {
           tenantId,
-          status: { in: ['ACTIVE', 'PARTIALLY_FULFILLED'] }
+          status: { in: ['ALLOCATED', 'CONFIRMED', 'PARTIALLY_CONSUMED'] }
         },
         include: {
           inventory: {
@@ -99,11 +101,16 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
+    // Filter low stock items where quantity <= reorderPoint
+    const filteredLowStockItems = lowStockItems.filter(
+      item => item.reorderPoint !== null && item.reorderPoint > 0 && item.quantity <= item.reorderPoint
+    )
+
     return NextResponse.json({
       totalItems,
-      lowStockItems,
+      lowStockItems: filteredLowStockItems,
       outOfStockItems,
-      totalQuantity: totalQuantity._sum.currentQuantity || 0,
+      totalQuantity: totalQuantity._sum.quantity || 0,
       recentTransactions,
       byCategory,
       byLocation,

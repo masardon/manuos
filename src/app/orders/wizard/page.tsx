@@ -27,6 +27,8 @@ import {
   Upload,
   ClipboardList,
   User,
+  GitBranch,
+  Info,
 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -146,6 +148,19 @@ interface TechnicalSpec {
   notes: string
 }
 
+interface Dependency {
+  id: string
+  predecessorId: string
+  predecessorType: 'MO' | 'Jobsheet' | 'Task'
+  predecessorName: string
+  successorId: string
+  successorType: 'MO' | 'Jobsheet' | 'Task'
+  successorName: string
+  dependencyType: 'FINISH_TO_START' | 'START_TO_START' | 'FINISH_TO_FINISH' | 'START_TO_FINISH'
+  lagDays: number
+  notes: string
+}
+
 interface MO {
   id: string
   moNumber: string
@@ -179,6 +194,9 @@ interface Order {
   
   // Step 3-5: PPIC / Manufacturing
   mos: MO[]
+  
+  // Step 7: Dependencies
+  dependencies: Dependency[]
 }
 
 // ============================================
@@ -192,7 +210,8 @@ const steps = [
   { id: 4, title: 'Material Distribution', subtitle: 'PPIC/MRP', icon: Layers, color: 'text-cyan-500' },
   { id: 5, title: 'Jobsheets', subtitle: 'PPIC', icon: Settings, color: 'text-orange-500' },
   { id: 6, title: 'Tasks', subtitle: 'PPIC/Production', icon: TrendingUp, color: 'text-red-500' },
-  { id: 7, title: 'Review & Submit', subtitle: 'All', icon: Check, color: 'text-green-600' },
+  { id: 7, title: 'Dependencies', subtitle: 'PPIC', icon: GitBranch, color: 'text-indigo-500' },
+  { id: 8, title: 'Review & Submit', subtitle: 'All', icon: Check, color: 'text-green-600' },
 ]
 
 // ============================================
@@ -344,6 +363,7 @@ export default function OrderWizardPage() {
       notes: '',
     },
     mos: [],
+    dependencies: [],
   })
 
   const [currentMO, setCurrentMO] = useState<MO | null>(null)
@@ -757,6 +777,72 @@ export default function OrderWizardPage() {
     setOrder({ ...order, mos: updatedMOs })
   }
 
+  // Dependency helpers
+  const getAllSelectableItems = () => {
+    const items: { value: string; label: string; type: 'MO' | 'Jobsheet' | 'Task' }[] = []
+    
+    order.mos.forEach((mo) => {
+      // Add MO
+      items.push({
+        value: `MO-${mo.id}`,
+        label: `${mo.moNumber} - ${mo.name}`,
+        type: 'MO',
+      })
+      
+      // Add Jobsheets
+      mo.jobsheets.forEach((js) => {
+        items.push({
+          value: `Jobsheet-${js.id}`,
+          label: `${js.jsNumber} - ${js.name}`,
+          type: 'Jobsheet',
+        })
+        
+        // Add Tasks
+        js.tasks.forEach((task) => {
+          items.push({
+            value: `Task-${task.id}`,
+            label: `${task.taskNumber} - ${task.name}`,
+            type: 'Task',
+          })
+        })
+      })
+    })
+    
+    return items
+  }
+
+  const findItemById = (type: string, id: string) => {
+    const items = getAllSelectableItems()
+    return items.find(item => item.value === `${type}-${id}`)
+  }
+
+  const handleAddDependency = () => {
+    const newDependency: Dependency = {
+      id: `dep-${Date.now()}`,
+      predecessorId: '',
+      predecessorType: 'MO',
+      predecessorName: '',
+      successorId: '',
+      successorType: 'MO',
+      successorName: '',
+      dependencyType: 'FINISH_TO_START',
+      lagDays: 0,
+      notes: '',
+    }
+    setOrder({ ...order, dependencies: [...order.dependencies, newDependency] })
+  }
+
+  const handleUpdateDependency = (depId: string, updates: Partial<Dependency>) => {
+    const updatedDependencies = order.dependencies.map((dep) =>
+      dep.id === depId ? { ...dep, ...updates } : dep
+    )
+    setOrder({ ...order, dependencies: updatedDependencies })
+  }
+
+  const handleDeleteDependency = (depId: string) => {
+    setOrder({ ...order, dependencies: order.dependencies.filter((d) => d.id !== depId) })
+  }
+
   // Submit Handler
   const handleSubmit = async () => {
     setLoading(true)
@@ -781,6 +867,9 @@ export default function OrderWizardPage() {
       const orderData = await orderResponse.json()
       const orderId = orderData.order.id
 
+      // Map local IDs to database IDs
+      const idMap: Map<string, { moId?: string; jsId?: string; taskId?: string }> = new Map()
+
       // Create MOs
       for (const mo of order.mos) {
         const moResponse = await fetch(`/api/orders/${orderId}/mo`, {
@@ -802,6 +891,10 @@ export default function OrderWizardPage() {
         if (!moResponse.ok) throw new Error('Failed to create MO')
         const moData = await moResponse.json()
         const moId = moData.mo.id
+        
+        // Map MO local ID to database ID
+        idMap.set(`MO-${mo.id}`, { moId })
+        idMap.set(mo.id, { moId })
 
         // Create Jobsheets
         for (const js of mo.jobsheets) {
@@ -821,10 +914,14 @@ export default function OrderWizardPage() {
           if (!jsResponse.ok) throw new Error('Failed to create jobsheet')
           const jsData = await jsResponse.json()
           const jsId = jsData.jobsheet.id
+          
+          // Map Jobsheet local ID to database ID
+          idMap.set(`Jobsheet-${js.id}`, { jsId })
+          idMap.set(js.id, { jsId })
 
           // Create Tasks
           for (const task of js.tasks) {
-            await fetch(`/api/jobsheet/${jsId}/tasks`, {
+            const taskResponse = await fetch(`/api/jobsheet/${jsId}/tasks`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -836,13 +933,73 @@ export default function OrderWizardPage() {
                 assignedTo: task.assignedTo || null,
               }),
             })
+            
+            if (taskResponse.ok) {
+              const taskData = await taskResponse.json()
+              const taskId = taskData.task?.id
+              if (taskId) {
+                // Map Task local ID to database ID
+                idMap.set(`Task-${task.id}`, { taskId })
+                idMap.set(task.id, { taskId })
+              }
+            }
           }
+        }
+      }
+
+      // Create Dependencies
+      if (order.dependencies.length > 0) {
+        const dependencyPayloads = order.dependencies
+          .filter(dep => dep.predecessorId && dep.successorId) // Only create if both are selected
+          .map(dep => {
+            const predIds = idMap.get(`${dep.predecessorType}-${dep.predecessorId}`) || idMap.get(dep.predecessorId)
+            const succIds = idMap.get(`${dep.successorType}-${dep.successorId}`) || idMap.get(dep.successorId)
+            
+            const payload: any = {
+              dependencyType: dep.dependencyType,
+              lagDays: dep.lagDays,
+              notes: dep.notes || undefined,
+            }
+            
+            // Set predecessor based on type
+            if (dep.predecessorType === 'MO' && predIds?.moId) {
+              payload.predecessorMoId = predIds.moId
+            } else if (dep.predecessorType === 'Jobsheet' && predIds?.jsId) {
+              payload.predecessorJobsheetId = predIds.jsId
+            } else if (dep.predecessorType === 'Task' && predIds?.taskId) {
+              payload.predecessorTaskId = predIds.taskId
+            }
+            
+            // Set successor based on type
+            if (dep.successorType === 'MO' && succIds?.moId) {
+              payload.successorMoId = succIds.moId
+            } else if (dep.successorType === 'Jobsheet' && succIds?.jsId) {
+              payload.successorJobsheetId = succIds.jsId
+            } else if (dep.successorType === 'Task' && succIds?.taskId) {
+              payload.successorTaskId = succIds.taskId
+            }
+            
+            return payload
+          })
+          .filter(payload => {
+            // Only include if we have valid IDs for both predecessor and successor
+            const hasPredecessor = payload.predecessorMoId || payload.predecessorJobsheetId || payload.predecessorTaskId
+            const hasSuccessor = payload.successorMoId || payload.successorJobsheetId || payload.successorTaskId
+            return hasPredecessor && hasSuccessor
+          })
+
+        if (dependencyPayloads.length > 0) {
+          await fetch('/api/dependencies', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dependencies: dependencyPayloads }),
+          })
         }
       }
 
       toast({
         title: 'Success',
-        description: 'Order created successfully with all manufacturing details!',
+        description: 'Order created successfully with all manufacturing details and dependencies!',
       })
 
       router.push(`/orders/${orderId}`)
@@ -1907,9 +2064,186 @@ export default function OrderWizardPage() {
         )
 
       // ==========================================
-      // STEP 7: REVIEW & SUBMIT
+      // STEP 7: DEPENDENCIES
       // ==========================================
       case 7:
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <GitBranch className="h-5 w-5 text-indigo-500" />
+                  Task Dependencies
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Define dependencies between Manufacturing Orders, Jobsheets, or Tasks to enable auto-scheduling
+                </p>
+              </div>
+              <Button onClick={handleAddDependency} size="sm">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Dependency
+              </Button>
+            </div>
+
+            {order.dependencies.length === 0 ? (
+              <Card>
+                <CardContent className="py-8">
+                  <p className="text-center text-muted-foreground">
+                    No dependencies configured. Click "Add Dependency" to define task relationships.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {order.dependencies.map((dep) => (
+                  <Card key={dep.id}>
+                    <CardContent className="pt-4">
+                      <div className="grid gap-4">
+                        <div className="grid grid-cols-12 gap-4 items-end">
+                          {/* Predecessor */}
+                          <div className="col-span-4 grid gap-2">
+                            <Label className="text-xs">Predecessor</Label>
+                            <Select
+                              value={dep.predecessorId ? `${dep.predecessorType}-${dep.predecessorId}` : ''}
+                              onValueChange={(value) => {
+                                const [type, id] = value.split('-')
+                                const item = findItemById(type, id)
+                                handleUpdateDependency(dep.id, {
+                                  predecessorId: id,
+                                  predecessorType: type as 'MO' | 'Jobsheet' | 'Task',
+                                  predecessorName: item?.name || '',
+                                })
+                              }}
+                            >
+                              <SelectTrigger className="h-8">
+                                <SelectValue placeholder="Select predecessor" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {getAllSelectableItems().map((item) => (
+                                  <SelectItem key={item.value} value={item.value}>
+                                    {item.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* Dependency Type */}
+                          <div className="col-span-2 grid gap-2">
+                            <Label className="text-xs">Type</Label>
+                            <Select
+                              value={dep.dependencyType}
+                              onValueChange={(value) => handleUpdateDependency(dep.id, { 
+                                dependencyType: value as Dependency['dependencyType'] 
+                              })}
+                            >
+                              <SelectTrigger className="h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="FINISH_TO_START">Finish-to-Start (FS)</SelectItem>
+                                <SelectItem value="START_TO_START">Start-to-Start (SS)</SelectItem>
+                                <SelectItem value="FINISH_TO_FINISH">Finish-to-Finish (FF)</SelectItem>
+                                <SelectItem value="START_TO_FINISH">Start-to-Finish (SF)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* Successor */}
+                          <div className="col-span-4 grid gap-2">
+                            <Label className="text-xs">Successor</Label>
+                            <Select
+                              value={dep.successorId ? `${dep.successorType}-${dep.successorId}` : ''}
+                              onValueChange={(value) => {
+                                const [type, id] = value.split('-')
+                                const item = findItemById(type, id)
+                                handleUpdateDependency(dep.id, {
+                                  successorId: id,
+                                  successorType: type as 'MO' | 'Jobsheet' | 'Task',
+                                  successorName: item?.name || '',
+                                })
+                              }}
+                            >
+                              <SelectTrigger className="h-8">
+                                <SelectValue placeholder="Select successor" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {getAllSelectableItems().map((item) => (
+                                  <SelectItem key={item.value} value={item.value}>
+                                    {item.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* Lag Days */}
+                          <div className="col-span-1 grid gap-2">
+                            <Label className="text-xs">Lag (days)</Label>
+                            <Input
+                              type="number"
+                              value={dep.lagDays}
+                              onChange={(e) => handleUpdateDependency(dep.id, { lagDays: parseInt(e.target.value) || 0 })}
+                              className="h-8"
+                              min="0"
+                            />
+                          </div>
+
+                          {/* Delete Button */}
+                          <div className="col-span-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive"
+                              onClick={() => handleDeleteDependency(dep.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Notes */}
+                        <div className="grid gap-2">
+                          <Label className="text-xs">Notes (optional)</Label>
+                          <Input
+                            value={dep.notes}
+                            onChange={(e) => handleUpdateDependency(dep.id, { notes: e.target.value })}
+                            placeholder="e.g., Assembly cannot start until machining is complete"
+                            className="h-8"
+                          />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* Info Card */}
+            <Card className="bg-muted/30">
+              <CardContent className="pt-4">
+                <div className="flex items-start gap-3">
+                  <Info className="h-5 w-5 text-indigo-500 mt-0.5" />
+                  <div className="text-sm space-y-1">
+                    <p className="font-medium">About Dependencies</p>
+                    <ul className="text-muted-foreground list-disc list-inside space-y-1">
+                      <li><strong>Finish-to-Start (FS):</strong> Successor starts after predecessor finishes</li>
+                      <li><strong>Start-to-Start (SS):</strong> Successor starts when predecessor starts</li>
+                      <li><strong>Finish-to-Finish (FF):</strong> Successor finishes when predecessor finishes</li>
+                      <li><strong>Start-to-Finish (SF):</strong> Successor finishes when predecessor starts</li>
+                      <li><strong>Lag Days:</strong> Add delay between predecessor and successor (e.g., +10 days)</li>
+                    </ul>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )
+
+      // ==========================================
+      // STEP 8: REVIEW & SUBMIT
+      // ==========================================
+      case 8:
         return (
           <div className="space-y-6">
             <div>
@@ -2011,6 +2345,49 @@ export default function OrderWizardPage() {
                     ))}
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Dependencies Summary */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <GitBranch className="h-4 w-4 text-indigo-500" />
+                  Dependencies Summary
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {order.dependencies.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No dependencies configured
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="text-center mb-4">
+                      <div className="text-2xl font-bold">{order.dependencies.length}</div>
+                      <div className="text-xs text-muted-foreground">Total Dependencies</div>
+                    </div>
+                    {order.dependencies.map((dep) => (
+                      <div key={dep.id} className="flex items-center justify-between p-2 bg-muted/30 rounded">
+                        <div className="flex items-center gap-2 text-sm">
+                          <Badge variant="outline">{dep.predecessorName || 'Not selected'}</Badge>
+                          <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                          <Badge variant="outline">{dep.successorName || 'Not selected'}</Badge>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary" className="text-xs">
+                            {dep.dependencyType.replace(/_/g, '-')}
+                          </Badge>
+                          {dep.lagDays > 0 && (
+                            <Badge className="bg-indigo-100 text-indigo-800 text-xs">
+                              +{dep.lagDays}d
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
 

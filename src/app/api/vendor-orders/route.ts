@@ -10,7 +10,7 @@ import {
   cancelVendorOrder,
 } from '@/lib/inventory/vendor-management'
 
-const DEMO_TENANT_ID = 'demo-tenant'
+const DEMO_TENANT_ID = 'tenant_ypti'
 
 export async function GET(request: NextRequest) {
   try {

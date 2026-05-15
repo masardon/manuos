@@ -27,24 +27,19 @@ export async function GET(
           include: {
             jobsheetMaterials: {
               include: {
-                allocations: true,
+                taskAllocations: true,
               },
             },
           },
         },
         jobsheets: {
           include: {
-            materials: {
+            materialAllocations: {
               include: {
                 materialRequirement: true,
-                allocations: {
-                  include: {
-                    inventory: true,
-                  },
-                },
               },
             },
-            tasks: {
+            machiningTasks: {
               include: {
                 machine: true,
                 assignedUser: true,
@@ -70,22 +65,22 @@ export async function GET(
             tenantId: DEMO_TENANT_ID,
             partNumber: req.partNumber,
             status: 'AVAILABLE',
-            currentQuantity: { gt: 0 },
+            quantity: { gt: 0 },
           },
           _sum: {
-            currentQuantity: true,
+            quantity: true,
           },
         });
 
         const totalAllocated = req.jobsheetMaterials.reduce((sum, jm) => {
-          return sum + jm.allocations.reduce((aSum, alloc) => aSum + alloc.quantity, 0);
+          return sum + jm.taskAllocations.reduce((aSum: number, alloc: any) => aSum + alloc.allocatedQty, 0);
         }, 0);
 
         return {
           ...req,
-          availableStock: availableStock._sum.currentQuantity || 0,
+          availableStock: availableStock._sum.quantity || 0,
           totalAllocated,
-          remaining: req.requiredQuantity - totalAllocated,
+          remaining: req.requiredQty - totalAllocated,
         };
       })
     );
@@ -93,6 +88,8 @@ export async function GET(
     return NextResponse.json({
       mo,
       materials: materialsWithStock,
+      requirements: materialsWithStock,
+      purchaseRequests: [],
     });
   } catch (error) {
     console.error('Error fetching MO materials:', error);

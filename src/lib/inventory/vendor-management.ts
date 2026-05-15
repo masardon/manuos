@@ -78,7 +78,7 @@ export async function getVendors(
           id: true,
           vendorOrderId: true,
           status: true,
-          totalAmount: true,
+          totalPrice: true,
         },
         orderBy: { createdAt: 'desc' },
         take: 5,

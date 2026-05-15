@@ -1,10 +1,24 @@
 # Product Requirements Document (PRD)
 # ManuOS - Manufacturing Operating System
 
-**Document Version**: 2.0
+**Document Version**: 2.1
 **Last Updated**: May 2026
 **Product Name**: ManuOS
 **Type**: Manufacturing Execution System (MES) with ERP Integration
+
+---
+
+## Related Documentation
+
+| Document | Description |
+|----------|-------------|
+| [MATERIAL_FLOW.md](./MATERIAL_FLOW.md) | Complete material flow diagrams and process documentation |
+| [USE_CASES.md](./USE_CASES.md) | Comprehensive use cases for all ManuOS functionality |
+| [GUIDEBOOK.md](./GUIDEBOOK.md) | Step-by-step user guide and operating instructions |
+| [TSD.md](./TSD.md) | Technical specification document |
+| [DATABASE.md](./DATABASE.md) | Database schema documentation |
+| [API.md](./API.md) | API endpoint documentation |
+| [CONNECTION_MAP.md](./CONNECTION_MAP.md) | System connection and dependency map |
 
 ---
 
@@ -17,7 +31,7 @@
 5. [User Stories](#5-user-stories)
 6. [Functional Requirements](#6-functional-requirements)
 7. [Non-Functional Requirements](#7-non-functional-requirements)
-8. [System Architecture](#8-system-architecture)
+8. [System Architecture](#8-system-system-architecture)
 9. [Data Model](#9-data-model)
 10. [Integration Requirements](#10-integration-requirements)
 11. [Security Requirements](#11-security-requirements)
@@ -592,6 +606,8 @@ Odoo Object: /xmlrpc/2/object
 | OEE | Overall Equipment Effectiveness |
 | SSE | Server-Sent Events |
 | XML-RPC | XML Remote Procedure Call |
+| CPM | Critical Path Method |
+| FS/SS/FF/SF | Dependency Types (Finish-to-Start, Start-to-Start, Finish-to-Finish, Start-to-Finish) |
 
 ### B. References
 
@@ -599,7 +615,103 @@ Odoo Object: /xmlrpc/2/object
 - Next.js Documentation: https://nextjs.org/docs
 - Odoo XML-RPC Documentation: https://www.odoo.com/documentation
 
+### C. Material Flow Architecture
+
+#### C.1 Inventory Ledger System
+
+The inventory ledger is the central tracking system for all material movements in ManuOS. Every material movement is recorded as a ledger entry with full traceability.
+
+**Key Features:**
+- **Atomic Transactions**: All inventory updates are transactional
+- **Complete Audit Trail**: Every movement recorded with user, timestamp, reference
+- **Real-Time Updates**: SSE-based notifications for instant UI updates
+- **Multi-Location Support**: Track materials across warehouse, PPIC rack, production floor, finished goods
+
+**Transaction Types:**
+| Type | Description | Example |
+|------|-------------|---------|
+| RECEIPT | Goods received from vendor | PO delivery received |
+| ISSUE | Materials issued to production | Handoff to production |
+| CONSUMPTION | Materials consumed in task | Task uses materials |
+| PRODUCTION_OUTPUT | Finished goods produced | Task completes with output |
+| TRANSFER | Move between locations | Move to PPIC rack |
+| QC_PASS | QC approved items | Good quantity after QC |
+| QC_FAIL | QC rejected items | Rework quantity after QC |
+| SCRAP | Scrapped items | Rejected after QC |
+| ADJUSTMENT | Manual correction | Inventory count adjustment |
+
+#### C.2 Material Flow States
+
+Materials move through the following locations:
+```
+RECEIVING → MAIN STOCK → PPIC RACK → PRODUCTION FLOOR → FINISHED GOODS
+                              │              │
+                              └──────────────┴──→ REWORK → PRODUCTION FLOOR
+```
+
+**Location Definitions:**
+- **RECEIVING**: Dock area for incoming shipments
+- **MAIN STOCK (WAREHOUSE)**: Primary storage location
+- **PPIC RACK**: Staging area for allocated materials
+- **PRODUCTION FLOOR**: Materials in active production
+- **FINISHED GOODS**: Completed products after QC pass
+- **REWORK**: Items needing rework after QC fail
+- **SCRAP**: Rejected items for disposal
+
+#### C.3 Handoff Workflow
+
+Material handoffs follow a 3-step process:
+1. **Move to PPIC Rack**: WAREHOUSE → PPIC_RACK (status: CREATED → MOVED)
+2. **Issue to Production**: PPIC_RACK → PRODUCTION_FLOOR (status: MOVED → ISSUED)
+3. **Confirm Receipt**: Confirm at production floor (status: ISSUED → CONFIRMED)
+
+**Duplicate Prevention:**
+- System checks for existing handoffs with same MO and materials
+- Prevents duplicate creation when clicking move button repeatedly
+
+#### C.4 QC Integration
+
+Quality Control automatically updates inventory:
+- **QC Pass**: Items move to FINISHED_GOODS
+- **QC Fail**: Items move to REWORK + Rework Order created
+- **Mixed Results**: Each quantity type (good/rework/scrap) processed separately
+
+### D. Dependency System
+
+#### D.1 Task Dependencies
+
+ManuOS supports dependency-aware scheduling with 4 dependency types:
+- **Finish-to-Start (FS)**: Most common, successor starts after predecessor finishes
+- **Start-to-Start (SS)**: Successor starts when predecessor starts
+- **Finish-to-Finish (FF)**: Successor finishes when predecessor finishes
+- **Start-to-Finish (SF)**: Rare, reverse dependency
+
+#### D.2 Critical Path Method (CPM)
+
+The execution plan API uses CPM to calculate optimal task dates:
+- **Forward Pass**: Calculate early start/finish dates
+- **Backward Pass**: Calculate late start/finish dates
+- **Float Calculation**: Determine scheduling flexibility
+- **Critical Path**: Tasks with zero float (highlighted in amber on Gantt)
+
+#### D.3 MO-Level Dependencies
+
+Dependencies can be configured at multiple levels:
+- **MO-level**: Connects last task of predecessor MO to first task of successor MO
+- **Jobsheet-level**: Connects jobsheets within or across MOs
+- **Task-level**: Connects individual tasks
+
+### E. Order Wizard Dependencies Step
+
+The Order Wizard includes a new Step 7 for configuring dependencies:
+- Select predecessor and successor items (MO, Jobsheet, or Task)
+- Choose dependency type (FS, SS, FF, SF)
+- Enter lag days (positive for delay, negative for overlap)
+- System validates no circular dependencies
+- Creates all dependency records on submission
+
 ---
 
 *ManuOS - Manufacturing Operating System*
-*Document Version 2.0 - May 2026*
+*Document Version 2.1 - May 2026*
+*Added: Material Flow Architecture, Dependency System, Order Wizard Dependencies*

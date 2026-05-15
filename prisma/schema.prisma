@@ -1,5 +1,3 @@
-// Manufacturing Orchestrator Platform - Complete Schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,17 +7,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================
-// TENANCY & ORGANIZATION HIERARCHY
-// ============================================
-
 model Tenant {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([slug])
 }
@@ -39,44 +33,37 @@ model BusinessUnit {
 }
 
 model Board {
-  id            String   @id @default(cuid())
-  tenantId      String
+  id             String   @id @default(cuid())
+  tenantId       String
   businessUnitId String
-  name          String
-  code          String
-  description   String?
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  name           String
+  code           String
+  description    String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@unique([tenantId, businessUnitId, code])
   @@index([tenantId])
   @@index([businessUnitId])
 }
 
-// ============================================
-// WORKFLOW ENGINE
-// ============================================
-
 model Workflow {
-  id              String   @id @default(cuid())
-  tenantId        String
-  code            String
-  name            String
-  description     String?
-  entityType      WorkflowEntityType
-  
-  isActive        Boolean  @default(true)
-  isDefault       Boolean  @default(false)
-  
-  createdBy       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  states          WorkflowState[]
-  transitions     WorkflowTransition[]
-  orders          Order[]
-  mos             ManufacturingOrder[]
+  id          String               @id @default(cuid())
+  tenantId    String
+  code        String
+  name        String
+  description String?
+  entityType  WorkflowEntityType
+  isActive    Boolean              @default(true)
+  isDefault   Boolean              @default(false)
+  createdBy   String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  mos         ManufacturingOrder[]
+  orders      Order[]
+  states      WorkflowState[]
+  transitions WorkflowTransition[]
 
   @@unique([tenantId, code, entityType])
   @@index([tenantId])
@@ -84,29 +71,25 @@ model Workflow {
 }
 
 model WorkflowState {
-  id              String   @id @default(cuid())
+  id              String               @id @default(cuid())
   tenantId        String
   workflowId      String
   code            String
   name            String
   description     String?
-  order           Int      @default(0)
-  
-  color           String?  @default("#gray")
+  order           Int                  @default(0)
+  color           String?              @default("#gray")
   icon            String?
-  
-  isInitial       Boolean  @default(false)
-  isFinal         Boolean  @default(false)
-  allowSelfAssign Boolean  @default(false)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  workflow        Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  fromTransitions WorkflowTransition[] @relation("FromStateTransitions")
-  toTransitions   WorkflowTransition[] @relation("ToStateTransitions")
-  orders          Order[] @relation("OrderCurrentState")
+  isInitial       Boolean              @default(false)
+  isFinal         Boolean              @default(false)
+  allowSelfAssign Boolean              @default(false)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
   mos             ManufacturingOrder[] @relation("MOCurrentState")
+  orders          Order[]              @relation("OrderCurrentState")
+  workflow        Workflow             @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  toTransitions   WorkflowTransition[] @relation("ToStateTransitions")
+  fromTransitions WorkflowTransition[] @relation("FromStateTransitions")
 
   @@unique([workflowId, code])
   @@index([tenantId])
@@ -114,7 +97,7 @@ model WorkflowState {
 }
 
 model WorkflowTransition {
-  id              String   @id @default(cuid())
+  id              String        @id @default(cuid())
   tenantId        String
   workflowId      String
   fromStateId     String
@@ -122,66 +105,52 @@ model WorkflowTransition {
   code            String
   name            String
   description     String?
-  order           Int      @default(0)
-  
+  order           Int           @default(0)
   condition       String?
-  allowedRoles    String   @default("") // Comma-separated role codes
-  requireApproval Boolean  @default(false)
-  approverRoles   String   @default("") // Comma-separated role codes
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  workflow        Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  fromState       WorkflowState @relation("FromStateTransitions", fields: [fromStateId], references: [id])
+  allowedRoles    String        @default("")
+  requireApproval Boolean       @default(false)
+  approverRoles   String        @default("")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
   toState         WorkflowState @relation("ToStateTransitions", fields: [toStateId], references: [id])
+  fromState       WorkflowState @relation("FromStateTransitions", fields: [fromStateId], references: [id])
+  workflow        Workflow      @relation(fields: [workflowId], references: [id], onDelete: Cascade)
 
   @@unique([workflowId, fromStateId, toStateId])
   @@index([tenantId])
   @@index([workflowId])
 }
 
-// ============================================
-// CORE MANUFACTURING HIERARCHY
-// ============================================
-
 model Order {
-  id                String   @id @default(cuid())
-  tenantId          String
-  boardId           String
-  orderNumber       String
-  
-  customerName      String
-  customerEmail     String?
-  customerPhone     String?
-  
-  // Workflow
-  workflowId        String?
-  currentStateId    String?
-  
-  status            OrderStatus @default(DRAFT)
-  plannedStartDate  DateTime?
-  plannedEndDate    DateTime?
-  actualStartDate   DateTime?
-  actualEndDate     DateTime?
-  
-  progressPercent   Float    @default(0)
-  
-  drawingUrl        String?
-  notes             String?
-  createdBy         String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
+  id                  String                 @id @default(cuid())
+  tenantId            String
+  boardId             String
+  orderNumber         String
+  customerName        String
+  customerEmail       String?
+  customerPhone       String?
+  workflowId          String?
+  currentStateId      String?
+  status              OrderStatus            @default("DRAFT")
+  plannedStartDate    DateTime?
+  plannedEndDate      DateTime?
+  actualStartDate     DateTime?
+  actualEndDate       DateTime?
+  progressPercent     Float                  @default(0)
+  drawingUrl          String?
+  notes               String?
+  createdBy           String?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  reservations        InventoryReservation[]
+  transactions        InventoryTransaction[]
   manufacturingOrders ManufacturingOrder[]
-  reservations      InventoryReservation[]
-  transactions      InventoryTransaction[]
-  qualityChecks     QualityCheck[]
-  reworkOrders      ReworkOrder[]
-  vendorOrders      VendorOrder[]
-  workflow          Workflow? @relation(fields: [workflowId], references: [id])
-  currentState      WorkflowState? @relation("OrderCurrentState", fields: [currentStateId], references: [id])
-  productionOutputs ProductionOutput[]
+  currentState        WorkflowState?         @relation("OrderCurrentState", fields: [currentStateId], references: [id])
+  workflow            Workflow?              @relation(fields: [workflowId], references: [id])
+  productionOutputs   ProductionOutput[]
+  qualityChecks       QualityCheck[]
+  reworkOrders        ReworkOrder[]
+  vendorOrders        VendorOrder[]
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId])
@@ -191,64 +160,51 @@ model Order {
 }
 
 model ManufacturingOrder {
-  id          String   @id @default(cuid())
-  tenantId    String
-  orderId     String
-  moNumber    String
-  name        String
-  description String?
-  type        MOType   @default(MAIN)
-  
-  // Outsourced Manufacturing
-  isOutsourced Boolean @default(false)
-  outsourcedType String?  // FULL_OUTSOURCE, PARTIAL_OUTSOURCE, SUBCONTRACT
-  vendorId    String?
-  vendorOrderNumber String?  // Vendor's PO reference
-  vendorQuoteNumber String?
-  vendorEstimatedCost Float?
-  vendorActualCost Float?
-  vendorLeadTimeDays Int?
-  vendorNotes String?
-  
-  workflowId  String?
-  currentStateId String?
-  
-  status      MOStatus @default(PLANNED)
-  plannedStartDate DateTime?
-  plannedEndDate   DateTime?
-  actualStartDate  DateTime?
-  actualEndDate    DateTime?
-  
-  progressPercent Float @default(0)
-  
-  recipeId    String?
-  
-  // Dependencies
-  dependsOn   String?  // Legacy single dependency (for backward compatibility)
-  
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  jobsheets   Jobsheet[]
-  order       Order @relation(fields: [orderId], references: [id])
-  reservations InventoryReservation[]
-  transactions InventoryTransaction[]
-  materialRequirements MaterialRequirement[]
-  materialHandoffs MaterialHandoff[]
-  qualityChecks QualityCheck[]
-  reworkOrders  ReworkOrder[]
-  vendorOrder  VendorOrder?  // Link to vendor order if outsourced
-  workflow    Workflow? @relation(fields: [workflowId], references: [id])
-  currentState WorkflowState? @relation("MOCurrentState", fields: [currentStateId], references: [id])
-  recipe      Recipe? @relation(fields: [recipeId], references: [id])
-  vendor      Supplier? @relation(fields: [vendorId], references: [id])
-  productionOutputs ProductionOutput[]
-  
-  // Task dependencies (as predecessor)
-  successorDependencies  TaskDependency[] @relation("MOToSuccessor")
-  // Task dependencies (as successor)
-  predecessorDependencies TaskDependency[] @relation("MOToPredecessor")
+  id                      String                 @id @default(cuid())
+  tenantId                String
+  orderId                 String
+  moNumber                String
+  name                    String
+  description             String?
+  type                    MOType                 @default("MAIN")
+  isOutsourced            Boolean                @default(false)
+  outsourcedType          String?
+  vendorId                String?
+  vendorOrderNumber       String?
+  vendorQuoteNumber       String?
+  vendorEstimatedCost     Float?
+  vendorActualCost        Float?
+  vendorLeadTimeDays      Int?
+  vendorNotes             String?
+  workflowId              String?
+  currentStateId          String?
+  status                  MOStatus               @default("PLANNED")
+  plannedStartDate        DateTime?
+  plannedEndDate          DateTime?
+  actualStartDate         DateTime?
+  actualEndDate           DateTime?
+  progressPercent         Float                  @default(0)
+  recipeId                String?
+  notes                   String?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  dependsOn               String?
+  reservations            InventoryReservation[]
+  transactions            InventoryTransaction[]
+  jobsheets               Jobsheet[]
+  vendor                  Supplier?              @relation(fields: [vendorId], references: [id])
+  recipe                  Recipe?                @relation(fields: [recipeId], references: [id])
+  currentState            WorkflowState?         @relation("MOCurrentState", fields: [currentStateId], references: [id])
+  workflow                Workflow?              @relation(fields: [workflowId], references: [id])
+  order                   Order                  @relation(fields: [orderId], references: [id])
+  materialHandoffs        MaterialHandoff[]
+  materialRequirements    MaterialRequirement[]
+  productionOutputs       ProductionOutput[]
+  qualityChecks           QualityCheck[]
+  reworkOrders            ReworkOrder[]
+  predecessorDependencies TaskDependency[]       @relation("MOToPredecessor")
+  successorDependencies   TaskDependency[]       @relation("MOToSuccessor")
+  vendorOrder             VendorOrder?
 
   @@unique([tenantId, orderId, moNumber])
   @@index([tenantId])
@@ -262,44 +218,34 @@ model ManufacturingOrder {
 }
 
 model Jobsheet {
-  id          String   @id @default(cuid())
-  tenantId    String
-  moId        String
-  jsNumber    String
-  name        String
-  description String?
-  type        JobsheetType @default(SINGLE_PART)
-  
-  preparedBy  String?
-  checkedBy   String?
-  approvedBy  String?
-  
-  status      JobsheetStatus @default(PREPARING)
-  
-  dependsOn   String?
-  
-  plannedStartDate DateTime?
-  plannedEndDate   DateTime?
-  actualStartDate  DateTime?
-  actualEndDate    DateTime?
-  
-  progressPercent Float @default(0)
-  
-  drawingUrl  String?
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  manufacturingOrder ManufacturingOrder @relation(fields: [moId], references: [id])
-  machiningTasks     MachiningTask[]
-  materialHandoffs   MaterialHandoff[]
-  materialAllocations JobsheetMaterial[]
-  productionOutputs  ProductionOutput[]
-  
-  // Task dependencies (as predecessor)
-  successorDependencies  TaskDependency[] @relation("JobsheetToSuccessor")
-  // Task dependencies (as successor)
-  predecessorDependencies TaskDependency[] @relation("JobsheetToPredecessor")
+  id                      String             @id @default(cuid())
+  tenantId                String
+  moId                    String
+  jsNumber                String
+  name                    String
+  description             String?
+  type                    JobsheetType       @default("SINGLE_PART")
+  preparedBy              String?
+  checkedBy               String?
+  approvedBy              String?
+  status                  JobsheetStatus     @default("PREPARING")
+  dependsOn               String?
+  plannedStartDate        DateTime?
+  plannedEndDate          DateTime?
+  actualStartDate         DateTime?
+  actualEndDate           DateTime?
+  progressPercent         Float              @default(0)
+  drawingUrl              String?
+  notes                   String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+  manufacturingOrder      ManufacturingOrder @relation(fields: [moId], references: [id])
+  materialAllocations     JobsheetMaterial[]
+  machiningTasks          MachiningTask[]
+  materialHandoffs        MaterialHandoff[]
+  productionOutputs       ProductionOutput[]
+  predecessorDependencies TaskDependency[]   @relation("JobsheetToPredecessor")
+  successorDependencies   TaskDependency[]   @relation("JobsheetToSuccessor")
 
   @@unique([tenantId, moId, jsNumber])
   @@index([tenantId])
@@ -309,53 +255,37 @@ model Jobsheet {
 }
 
 model MachiningTask {
-  id          String   @id @default(cuid())
-  tenantId    String
-  jobsheetId  String
-  taskNumber  String
-  name        String
-  description String?
-  
-  machineId   String?
-  
-  status      TaskStatus @default(PENDING)
-  
-  plannedHours Float?
-  actualHours   Float?
-  
-  // Planned dates for scheduling (used by Gantt chart and execution planning)
-  plannedStartDate DateTime?
-  plannedEndDate   DateTime?
-  
-  // Actual clock times
-  clockedInAt   DateTime?
-  clockedOutAt  DateTime?
-  
-  breakdownAt   DateTime?
-  breakdownNote String?
-  resolvedAt    DateTime?
-  
-  assignedTo   String?
-  
-  progressPercent Float @default(0)
-  
-  dependsOn   String?
-  
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  machine     Machine? @relation(fields: [machineId], references: [id])
-  jobsheet    Jobsheet @relation(fields: [jobsheetId], references: [id])
-  assignedUser     User? @relation(fields: [assignedTo], references: [id])
-  materialHandoffs MaterialHandoff[]
-  materialAllocations TaskMaterialAllocation[]
-  productionOutputs ProductionOutput[]
-  
-  // Task dependencies (as predecessor)
-  successorDependencies  TaskDependency[] @relation("TaskToSuccessor")
-  // Task dependencies (as successor)
-  predecessorDependencies TaskDependency[] @relation("TaskToPredecessor")
+  id                      String                   @id @default(cuid())
+  tenantId                String
+  jobsheetId              String
+  taskNumber              String
+  name                    String
+  description             String?
+  machineId               String?
+  status                  TaskStatus               @default("PENDING")
+  plannedHours            Float?
+  actualHours             Float?
+  clockedInAt             DateTime?
+  clockedOutAt            DateTime?
+  breakdownAt             DateTime?
+  breakdownNote           String?
+  resolvedAt              DateTime?
+  assignedTo              String?
+  progressPercent         Float                    @default(0)
+  dependsOn               String?
+  notes                   String?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  plannedEndDate          DateTime?
+  plannedStartDate        DateTime?
+  assignedUser            User?                    @relation(fields: [assignedTo], references: [id])
+  jobsheet                Jobsheet                 @relation(fields: [jobsheetId], references: [id])
+  machine                 Machine?                 @relation(fields: [machineId], references: [id])
+  materialHandoffs        MaterialHandoff[]
+  productionOutputs       ProductionOutput[]
+  predecessorDependencies TaskDependency[]         @relation("TaskToPredecessor")
+  successorDependencies   TaskDependency[]         @relation("TaskToSuccessor")
+  materialAllocations     TaskMaterialAllocation[]
 
   @@unique([tenantId, jobsheetId, taskNumber])
   @@index([tenantId])
@@ -366,47 +296,29 @@ model MachiningTask {
   @@index([dependsOn])
 }
 
-// ============================================
-// TASK DEPENDENCIES (PREDECESSOR/SUCCESSOR)
-// ============================================
-
 model TaskDependency {
-  id              String   @id @default(cuid())
-  tenantId        String
-  
-  // Predecessor (the task that must finish first)
-  // Using separate foreign keys for each type (polymorphic pattern)
+  id                    String              @id @default(cuid())
+  tenantId              String
   predecessorTaskId     String?
   predecessorJobsheetId String?
   predecessorMoId       String?
   predecessorOrderId    String?
-  
-  // Successor (the task that depends on predecessor)
   successorTaskId       String?
   successorJobsheetId   String?
   successorMoId         String?
   successorOrderId      String?
-  
-  // Dependency type
-  dependencyType  DependencyType @default(FINISH_TO_START)  // FS, SS, FF, SF
-  lagDays         Float @default(0)  // Positive = delay, Negative = overlap
-  
-  // Status
-  isActive        Boolean @default(true)
-  
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  // Relations to predecessor entities
-  predecessorTask     MachiningTask? @relation("TaskToSuccessor", fields: [predecessorTaskId], references: [id])
-  predecessorJobsheet Jobsheet? @relation("JobsheetToSuccessor", fields: [predecessorJobsheetId], references: [id])
-  predecessorMO       ManufacturingOrder? @relation("MOToSuccessor", fields: [predecessorMoId], references: [id])
-  
-  // Relations to successor entities
-  successorTask       MachiningTask? @relation("TaskToPredecessor", fields: [successorTaskId], references: [id])
-  successorJobsheet   Jobsheet? @relation("JobsheetToPredecessor", fields: [successorJobsheetId], references: [id])
-  successorMO         ManufacturingOrder? @relation("MOToPredecessor", fields: [successorMoId], references: [id])
+  dependencyType        DependencyType      @default("FINISH_TO_START")
+  lagDays               Float               @default(0)
+  isActive              Boolean             @default(true)
+  notes                 String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  successorMO           ManufacturingOrder? @relation("MOToPredecessor", fields: [successorMoId], references: [id])
+  successorJobsheet     Jobsheet?           @relation("JobsheetToPredecessor", fields: [successorJobsheetId], references: [id])
+  successorTask         MachiningTask?      @relation("TaskToPredecessor", fields: [successorTaskId], references: [id])
+  predecessorMO         ManufacturingOrder? @relation("MOToSuccessor", fields: [predecessorMoId], references: [id])
+  predecessorJobsheet   Jobsheet?           @relation("JobsheetToSuccessor", fields: [predecessorJobsheetId], references: [id])
+  predecessorTask       MachiningTask?      @relation("TaskToSuccessor", fields: [predecessorTaskId], references: [id])
 
   @@unique([tenantId, predecessorTaskId, successorTaskId])
   @@index([tenantId])
@@ -416,85 +328,46 @@ model TaskDependency {
   @@index([successorMoId])
 }
 
-enum DependencyEntityType {
-  TASK
-  JOBSHEET
-  MO
-  ORDER
-}
-
-enum DependencyType {
-  FINISH_TO_START    // FS: Successor starts after predecessor finishes
-  START_TO_START     // SS: Successor starts when predecessor starts
-  FINISH_TO_FINISH   // FF: Successor finishes when predecessor finishes
-  START_TO_FINISH    // SF: Successor finishes when predecessor starts
-}
-
-// ============================================
-// PRODUCTION OUTPUT TRACKING
-// ============================================
-
 model ProductionOutput {
-  id              String   @id @default(cuid())
-  tenantId        String
-  outputNumber    String   @unique  // PO-2026-001
-  
-  // Source
-  taskId          String
-  jobsheetId      String
-  moId            String
-  orderId         String
-  
-  // What was produced
-  partNumber      String
-  productName     String
-  batch           String?
-  
-  // Quantities
-  plannedQty      Float    // Expected output
-  actualQty       Float    // Actual produced
-  goodQty         Float    @default(0)  // Passed QC
-  reworkQty       Float    @default(0)  // Needs rework
-  scrapQty        Float    @default(0)  // Rejected/scrapped
-  
-  // Status
-  status          ProductionOutputStatus @default(IN_PROGRESS)
-  
-  // Material consumption (what was used)
-  materialConsumed String?  // JSON of consumed materials
-  
-  // Timing
-  startedAt       DateTime?
-  completedAt     DateTime?
-  
-  // QC
-  qcPassed        Boolean  @default(false)
-  qcCheckedAt     DateTime?
-  qcCheckedBy     String?
-  qcNotes         String?
-  
-  // Location
-  outputLocationId String?  // Where finished goods go
-  outputShelfId    String?
-  
-  // Notes
-  notes           String?
-  defectNotes     String?
-  
-  createdBy       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  // Relations
-  task            MachiningTask @relation(fields: [taskId], references: [id])
-  jobsheet        Jobsheet @relation(fields: [jobsheetId], references: [id])
-  mo              ManufacturingOrder @relation(fields: [moId], references: [id])
-  order           Order @relation(fields: [orderId], references: [id])
-  outputLocation  Location? @relation("ProductionOutputLocation", fields: [outputLocationId], references: [id])
-  outputShelf     Shelf? @relation("ProductionOutputShelf", fields: [outputShelfId], references: [id])
-  qcInspector     User? @relation(fields: [qcCheckedBy], references: [id])
+  id                    String                 @id @default(cuid())
+  tenantId              String
+  outputNumber          String                 @unique
+  taskId                String
+  jobsheetId            String
+  moId                  String
+  orderId               String
+  partNumber            String
+  productName           String
+  batch                 String?
+  plannedQty            Float
+  actualQty             Float
+  goodQty               Float                  @default(0)
+  reworkQty             Float                  @default(0)
+  scrapQty              Float                  @default(0)
+  status                ProductionOutputStatus @default("IN_PROGRESS")
+  materialConsumed      String?
+  startedAt             DateTime?
+  completedAt           DateTime?
+  qcPassed              Boolean                @default(false)
+  qcCheckedAt           DateTime?
+  qcCheckedBy           String?
+  qcNotes               String?
+  outputLocationId      String?
+  outputShelfId         String?
+  notes                 String?
+  defectNotes           String?
+  createdBy             String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
   inventoryTransactions InventoryTransaction[]
-  
+  qcInspector           User?                  @relation(fields: [qcCheckedBy], references: [id])
+  outputShelf           Shelf?                 @relation("ProductionOutputShelf", fields: [outputShelfId], references: [id])
+  outputLocation        Location?              @relation("ProductionOutputLocation", fields: [outputLocationId], references: [id])
+  order                 Order                  @relation(fields: [orderId], references: [id])
+  mo                    ManufacturingOrder     @relation(fields: [moId], references: [id])
+  jobsheet              Jobsheet               @relation(fields: [jobsheetId], references: [id])
+  task                  MachiningTask          @relation(fields: [taskId], references: [id])
+
   @@unique([tenantId, outputNumber])
   @@index([tenantId])
   @@index([taskId])
@@ -504,55 +377,30 @@ model ProductionOutput {
   @@index([partNumber])
 }
 
-enum ProductionOutputStatus {
-  IN_PROGRESS
-  COMPLETED
-  QC_PASSED
-  QC_FAILED
-  REWORK
-  SCRAPPED
-  STORED
-}
-
-// ============================================
-// MATERIAL ALLOCATION TO JOBSHEET & TASKS
-// ============================================
-
 model JobsheetMaterial {
-  id              String   @id @default(cuid())
-  tenantId        String
-  jobsheetId      String
+  id                    String                   @id @default(cuid())
+  tenantId              String
+  jobsheetId            String
   materialRequirementId String?
-  
-  // Material Info
-  partNumber      String
-  name            String
-  description     String?
-  
-  // Allocated from MO
-  allocatedQty    Float
-  availableQty    Float   @default(0)  // Available for tasks
-  consumedQty     Float   @default(0)
-  unit            String?
-  
-  // Source
-  sourceBatch     String?
-  sourceShelf     String?
-  sourceLocation  String?
-  
-  // Status
-  status          JobsheetMaterialStatus @default(ALLOCATED)
-  
-  notes           String?
-  allocatedBy     String?
-  allocatedAt     DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  // Relations
-  jobsheet        Jobsheet @relation(fields: [jobsheetId], references: [id])
-  materialRequirement MaterialRequirement? @relation(fields: [materialRequirementId], references: [id])
-  taskAllocations TaskMaterialAllocation[]
+  partNumber            String
+  name                  String
+  description           String?
+  allocatedQty          Float
+  availableQty          Float                    @default(0)
+  consumedQty           Float                    @default(0)
+  unit                  String?
+  sourceBatch           String?
+  sourceShelf           String?
+  sourceLocation        String?
+  status                JobsheetMaterialStatus   @default("ALLOCATED")
+  notes                 String?
+  allocatedBy           String?
+  allocatedAt           DateTime                 @default(now())
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  materialRequirement   MaterialRequirement?     @relation(fields: [materialRequirementId], references: [id])
+  jobsheet              Jobsheet                 @relation(fields: [jobsheetId], references: [id])
+  taskAllocations       TaskMaterialAllocation[]
 
   @@index([tenantId])
   @@index([jobsheetId])
@@ -561,33 +409,24 @@ model JobsheetMaterial {
 }
 
 model TaskMaterialAllocation {
-  id              String   @id @default(cuid())
-  tenantId        String
+  id                 String             @id @default(cuid())
+  tenantId           String
   jobsheetMaterialId String
-  taskId          String
-  
-  // Allocation
-  allocatedQty    Float
-  consumedQty     Float   @default(0)
-  wastedQty       Float   @default(0)
-  remainingQty    Float   @default(0)
-  unit            String?
-  
-  // Status
-  status          TaskMaterialStatus @default(ALLOCATED)
-  
-  // Consumption tracking
-  consumedAt      DateTime?
-  consumedBy      String?
-  wasteReason     String?
-  
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  // Relations
-  jobsheetMaterial JobsheetMaterial @relation(fields: [jobsheetMaterialId], references: [id])
-  task            MachiningTask @relation(fields: [taskId], references: [id])
+  taskId             String
+  allocatedQty       Float
+  consumedQty        Float              @default(0)
+  wastedQty          Float              @default(0)
+  remainingQty       Float              @default(0)
+  unit               String?
+  status             TaskMaterialStatus @default("ALLOCATED")
+  consumedAt         DateTime?
+  consumedBy         String?
+  wasteReason        String?
+  notes              String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  task               MachiningTask      @relation(fields: [taskId], references: [id])
+  jobsheetMaterial   JobsheetMaterial   @relation(fields: [jobsheetMaterialId], references: [id])
 
   @@index([tenantId])
   @@index([jobsheetMaterialId])
@@ -595,34 +434,25 @@ model TaskMaterialAllocation {
   @@index([status])
 }
 
-// ============================================
-// MACHINE MANAGEMENT
-// ============================================
-
 model Machine {
-  id          String   @id @default(cuid())
-  tenantId    String
-  code        String
-  name        String
-  model       String?
-  location    String?
-  type        String?
-
-  status      MachineStatus @default(IDLE)
-
-  capacity    Float?
-
+  id                String          @id @default(cuid())
+  tenantId          String
+  code              String
+  name              String
+  model             String?
+  location          String?
+  type              String?
+  status            MachineStatus   @default("IDLE")
+  capacity          Float?
   lastMaintenanceAt DateTime?
   nextMaintenanceAt DateTime?
-
-  notes       String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  machiningTasks MachiningTask[]
-  breakdowns Breakdown[]
-  reworkTasks ReworkTask[]
+  notes             String?
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  breakdowns        Breakdown[]
+  machiningTasks    MachiningTask[]
+  reworkTasks       ReworkTask[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -630,27 +460,22 @@ model Machine {
 }
 
 model Breakdown {
-  id          String   @id @default(cuid())
-  tenantId    String
-  machineId   String
-  
-  reportedBy  String
-  reportedAt  DateTime @default(now())
-  type        BreakdownType @default(MECHANICAL)
-  description String
-  notes       String?
-  
-  resolved    Boolean  @default(false)
-  resolvedAt  DateTime?
-  resolvedBy  String?
-  resolution  String?
-  
-  affectedTaskId  String?
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  machine     Machine @relation(fields: [machineId], references: [id])
+  id             String        @id @default(cuid())
+  tenantId       String
+  machineId      String
+  reportedBy     String
+  reportedAt     DateTime      @default(now())
+  type           BreakdownType @default("MECHANICAL")
+  description    String
+  notes          String?
+  resolved       Boolean       @default(false)
+  resolvedAt     DateTime?
+  resolvedBy     String?
+  resolution     String?
+  affectedTaskId String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  machine        Machine       @relation(fields: [machineId], references: [id])
 
   @@index([tenantId])
   @@index([machineId])
@@ -658,58 +483,38 @@ model Breakdown {
   @@index([reportedAt])
 }
 
-// ============================================
-// MATERIAL REQUIREMENTS (MRP)
-// ============================================
-
 model MaterialRequirement {
-  id              String   @id @default(cuid())
-  tenantId        String
-  moId            String
-  recipeIngredientId String?  // Link to recipe ingredient if from BOM
-  
-  // Material Info
-  partNumber      String
-  name            String
-  description     String?
-  category        String?
-  
-  // Quantities
-  requiredQty     Float    // Total quantity needed
-  reservedQty     Float    @default(0)  // Qty reserved from stock
-  requestedQty    Float    @default(0)  // Qty to be purchased
-  receivedQty     Float    @default(0)  // Qty received from PO
-  consumedQty     Float    @default(0)  // Qty actually consumed
-  
-  // Status
-  status          MaterialRequirementStatus @default(PLANNED)
-  
-  // Priority & Timing
-  priority        Int      @default(5)  // 1=Critical, 10=Low
-  requiredDate    DateTime // When material is needed
-  plannedOrderId  String?  // Link to PO when created
-  
-  // Unit & Specs
-  unit            String?
-  specifications  String?  // Technical specs/notes
-  
-  // Tracking
-  inventoryId     String?  // Linked inventory item (if found)
-  
-  // Metadata
-  notes           String?
-  createdBy       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  // Relations
-  mo              ManufacturingOrder @relation(fields: [moId], references: [id])
-  inventory       Inventory? @relation(fields: [inventoryId], references: [id])
-  reservations    InventoryReservation[]
+  id                   String                    @id @default(cuid())
+  tenantId             String
+  moId                 String
+  recipeIngredientId   String?
+  partNumber           String
+  name                 String
+  description          String?
+  category             String?
+  requiredQty          Float
+  reservedQty          Float                     @default(0)
+  requestedQty         Float                     @default(0)
+  receivedQty          Float                     @default(0)
+  consumedQty          Float                     @default(0)
+  status               MaterialRequirementStatus @default("PLANNED")
+  priority             Int                       @default(5)
+  requiredDate         DateTime
+  plannedOrderId       String?
+  unit                 String?
+  specifications       String?
+  inventoryId          String?
+  notes                String?
+  createdBy            String?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  reservations         InventoryReservation[]
+  jobsheetMaterials    JobsheetMaterial[]
+  handoffItems         MaterialHandoffItem[]
+  recipeIngredient     RecipeIngredient?         @relation(fields: [recipeIngredientId], references: [id])
+  inventory            Inventory?                @relation(fields: [inventoryId], references: [id])
+  mo                   ManufacturingOrder        @relation(fields: [moId], references: [id])
   purchaseRequestItems PurchaseRequestItem[]
-  recipeIngredient RecipeIngredient? @relation(fields: [recipeIngredientId], references: [id])
-  handoffItems    MaterialHandoffItem[]
-  jobsheetMaterials JobsheetMaterial[]
 
   @@unique([tenantId, moId, partNumber])
   @@index([tenantId])
@@ -720,55 +525,35 @@ model MaterialRequirement {
 }
 
 model PurchaseRequest {
-  id              String   @id @default(cuid())
-  tenantId        String
-  prNumber        String   // PR-2025-001
-  title           String
-  description     String?
-  
-  // Status
-  status          PurchaseRequestStatus @default(DRAFT)
-  
-  // Priority
-  priority        Int      @default(5)  // 1=Critical, 10=Low
-  
-  // Source
-  sourceType      String   // MANUAL, AUTO_MO, REORDER_POINT
-  sourceMoId      String?  // MO that triggered this PR
-  sourceReference String?  // Additional reference
-  
-  // Supplier
-  supplierId      String?
+  id                String                @id @default(cuid())
+  tenantId          String
+  prNumber          String
+  title             String
+  description       String?
+  status            PurchaseRequestStatus @default("DRAFT")
+  priority          Int                   @default(5)
+  sourceType        String
+  sourceMoId        String?
+  sourceReference   String?
+  supplierId        String?
   suggestedSupplier String?
-  
-  // Dates
-  requiredDate    DateTime
-  submittedAt     DateTime?
-  approvedAt      DateTime?
-  
-  // Approval
-  preparedBy      String?
-  approvedBy      String?
-  
-  // Odoo Integration
-  odooPrId        String?  // Odoo PR ID
-  odooSyncedAt    DateTime?
-  linkedPoId      String?  // PO created from this PR
-  
-  // Totals
-  totalItems      Int      @default(0)
-  estimatedAmount Float    @default(0)
-  currency        String   @default("IDR")
-  
-  // Metadata
-  notes           String?
-  createdBy       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  // Relations
-  supplier        Supplier? @relation(fields: [supplierId], references: [id])
-  items           PurchaseRequestItem[]
+  requiredDate      DateTime
+  submittedAt       DateTime?
+  approvedAt        DateTime?
+  preparedBy        String?
+  approvedBy        String?
+  odooPrId          String?
+  odooSyncedAt      DateTime?
+  linkedPoId        String?
+  totalItems        Int                   @default(0)
+  estimatedAmount   Float                 @default(0)
+  currency          String                @default("IDR")
+  notes             String?
+  createdBy         String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  supplier          Supplier?             @relation(fields: [supplierId], references: [id])
+  items             PurchaseRequestItem[]
 
   @@unique([tenantId, prNumber])
   @@index([tenantId])
@@ -779,41 +564,29 @@ model PurchaseRequest {
 }
 
 model PurchaseRequestItem {
-  id                  String   @id @default(cuid())
-  tenantId            String
-  purchaseRequestId   String
-  materialRequirementId String?  // Link to material requirement
-  
-  // Material Info
-  partNumber          String
-  name                String
-  description         String?
-  inventoryId         String?  // Existing inventory item
-  
-  // Quantities & Pricing
-  quantity            Float
-  unitPrice           Float   @default(0)
-  totalPrice          Float   @default(0)
-  unit                String?
-  
-  // Supplier
-  supplierId          String?
-  supplierPartNumber  String?
-  
-  // Status
-  status              PRItemStatus @default(PENDING)
-  receivedQty         Float   @default(0)
-  
-  // Metadata
-  notes               String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-
-  // Relations
-  purchaseRequest     PurchaseRequest @relation(fields: [purchaseRequestId], references: [id])
-  materialRequirement MaterialRequirement? @relation(fields: [materialRequirementId], references: [id])
-  inventory           Inventory? @relation(fields: [inventoryId], references: [id])
-  supplier            Supplier? @relation(fields: [supplierId], references: [id])
+  id                    String               @id @default(cuid())
+  tenantId              String
+  purchaseRequestId     String
+  materialRequirementId String?
+  partNumber            String
+  name                  String
+  description           String?
+  inventoryId           String?
+  quantity              Float
+  unitPrice             Float                @default(0)
+  totalPrice            Float                @default(0)
+  unit                  String?
+  supplierId            String?
+  supplierPartNumber    String?
+  status                PRItemStatus         @default("PENDING")
+  receivedQty           Float                @default(0)
+  notes                 String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  supplier              Supplier?            @relation(fields: [supplierId], references: [id])
+  inventory             Inventory?           @relation(fields: [inventoryId], references: [id])
+  materialRequirement   MaterialRequirement? @relation(fields: [materialRequirementId], references: [id])
+  purchaseRequest       PurchaseRequest      @relation(fields: [purchaseRequestId], references: [id])
 
   @@index([tenantId])
   @@index([purchaseRequestId])
@@ -821,55 +594,42 @@ model PurchaseRequestItem {
   @@index([inventoryId])
 }
 
-// Add back-relations to Supplier
 model Supplier {
-  id            String   @id @default(cuid())
-  tenantId      String
-  code          String
-  name          String
-  contactPerson String?
-  email         String?
-  phone         String?
-  address       String?
-  city          String?
-  country       String?
-  
-  // Supplier Type
-  supplierType  SupplierType @default(MATERIAL)  // MATERIAL, CONTRACT_MANUFACTURER, BOTH
-  vendorTier    String?  // TIER_1, TIER_2, TIER_3
-  
-  // Contract Manufacturing Capabilities
-  capabilities  String?  // JSON array of capabilities: ["CNC", "INJECTION_MOLDING", etc.]
-  certifications String?  // ISO, IATF, etc.
-  leadTimeDays  Int?     // Standard lead time
-  moq           Int?     // Minimum order quantity
-  
-  // Financial
-  paymentTerms  String?  // NET30, NET60, etc.
-  currency      String?  @default("IDR")
-  creditLimit   Float?
-  
-  // Rating & Performance
-  qualityRating Float?   @default(5.0)  // 1-5
-  deliveryRating Float?  @default(5.0)  // 1-5
-  priceRating   Float?   @default(5.0)  // 1-5
-  totalOrders   Int      @default(0)
-  onTimeDelivery Float?  @default(100)  // Percentage
-  
-  odooPartnerId String?
-  
-  isActive      Boolean  @default(true)
-  
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  inventory     Inventory[]
-  purchaseOrders PurchaseOrder[]
-  purchaseRequests PurchaseRequest[]
+  id                   String                @id @default(cuid())
+  tenantId             String
+  code                 String
+  name                 String
+  contactPerson        String?
+  email                String?
+  phone                String?
+  address              String?
+  city                 String?
+  country              String?
+  supplierType         SupplierType          @default("MATERIAL")
+  vendorTier           String?
+  capabilities         String?
+  certifications       String?
+  leadTimeDays         Int?
+  moq                  Int?
+  paymentTerms         String?
+  currency             String?               @default("IDR")
+  creditLimit          Float?
+  qualityRating        Float?                @default(5.0)
+  deliveryRating       Float?                @default(5.0)
+  priceRating          Float?                @default(5.0)
+  totalOrders          Int                   @default(0)
+  onTimeDelivery       Float?                @default(100)
+  odooPartnerId        String?
+  isActive             Boolean               @default(true)
+  notes                String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  inventory            Inventory[]
+  outsourcedMfgOrders  ManufacturingOrder[]
+  purchaseOrders       PurchaseOrder[]
+  purchaseRequests     PurchaseRequest[]
   purchaseRequestItems PurchaseRequestItem[]
-  vendorOrders  VendorOrder[]  // Outsourced manufacturing orders
-  outsourcedMfgOrders ManufacturingOrder[]  // MOs outsourced to this vendor
+  vendorOrders         VendorOrder[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -877,86 +637,54 @@ model Supplier {
   @@index([odooPartnerId])
 }
 
-// ============================================
-// CONTRACT MANUFACTURING / OUTSOURCING
-// ============================================
-
 model VendorOrder {
-  id                String   @id @default(cuid())
-  tenantId          String
-  vendorOrderId     String   @unique  // VO-2026-001
-  vendorId          String
-  orderId           String?
-  moId              String?
-  
-  // Order Details
-  title             String
-  description       String?
-  referenceNumber   String?  // Customer PO reference
-  vendorQuoteNumber String?
-  
-  // Outsourcing Type
-  outsourceType     OutsourceType @default(FULL)
-  workDescription   String   // What work is being outsourced
-  
-  // Quantities
-  quantity          Float
-  unit              String?
-  
-  // Pricing
-  unitPrice         Float
-  totalPrice        Float
-  currency          String   @default("IDR")
-  paymentTerms      String?
-  
-  // Timeline
-  orderDate         DateTime @default(now())
-  promisedDate      DateTime?
+  id                 String              @id @default(cuid())
+  tenantId           String
+  vendorOrderId      String              @unique
+  vendorId           String
+  orderId            String?
+  moId               String?             @unique
+  title              String
+  description        String?
+  referenceNumber    String?
+  vendorQuoteNumber  String?
+  outsourceType      OutsourceType       @default("FULL")
+  workDescription    String
+  quantity           Float
+  unit               String?
+  unitPrice          Float
+  totalPrice         Float
+  currency           String              @default("IDR")
+  paymentTerms       String?
+  orderDate          DateTime            @default(now())
+  promisedDate       DateTime?
   actualDeliveryDate DateTime?
-  
-  // Lead Time Tracking
   vendorLeadTimeDays Int?
-  daysRemaining     Int?
-  
-  // Status
-  status            VendorOrderStatus @default(DRAFT)
-  
-  // Quality
-  qualityRequired   Boolean  @default(true)
-  qualityPassed     Boolean?
-  qcNotes           String?
-  
-  // Shipping
-  shippingMethod    String?
-  shippingCost      Float?
-  trackingNumber    String?
-  
-  // Documents
-  poDocument        String?  // Path to PO document
-  packingList       String?  // Path to packing list
-  certificate       String?  // Path to quality certificate
-  
-  // Notes
-  notes             String?
-  internalNotes     String?
-  
-  // Approval
-  approvedBy        String?
-  approvedAt        DateTime?
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  // Relations
-  vendor            Supplier @relation(fields: [vendorId], references: [id])
-  order             Order? @relation(fields: [orderId], references: [id])
+  daysRemaining      Int?
+  status             VendorOrderStatus   @default("DRAFT")
+  qualityRequired    Boolean             @default(true)
+  qualityPassed      Boolean?
+  qcNotes            String?
+  shippingMethod     String?
+  shippingCost       Float?
+  trackingNumber     String?
+  poDocument         String?
+  packingList        String?
+  certificate        String?
+  notes              String?
+  internalNotes      String?
+  approvedBy         String?
+  approvedAt         DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  invoices           VendorInvoice[]
   manufacturingOrder ManufacturingOrder? @relation(fields: [moId], references: [id])
-  items             VendorOrderItem[]
-  shipments         VendorShipment[]
-  invoices          VendorInvoice[]
-  
+  order              Order?              @relation(fields: [orderId], references: [id])
+  vendor             Supplier            @relation(fields: [vendorId], references: [id])
+  items              VendorOrderItem[]
+  shipments          VendorShipment[]
+
   @@unique([tenantId, vendorOrderId])
-  @@unique([moId])  // One vendor order per MO
   @@index([tenantId])
   @@index([vendorId])
   @@index([status])
@@ -964,85 +692,59 @@ model VendorOrder {
 }
 
 model VendorOrderItem {
-  id              String   @id @default(cuid())
-  tenantId        String
-  vendorOrderId   String
-  materialId      String?
-  inventoryId     String?
-  
-  // Item Details
-  partNumber      String
-  name            String
-  description     String?
-  
-  // Quantities
-  quantity        Float
-  unit            String?
-  receivedQty     Float    @default(0)
-  acceptedQty     Float    @default(0)
-  rejectedQty     Float    @default(0)
-  
-  // Pricing
-  unitPrice       Float
-  totalPrice      Float
-  currency        String   @default("IDR")
-  
-  // Quality
-  qcRequired      Boolean  @default(true)
-  qcPassed        Boolean?
-  defectCode      String?
-  defectNotes     String?
-  
-  // Batch Tracking
-  batchNumber     String?
-  lotNumber       String?
-  
-  notes           String?
-  createdAt       DateTime @default(now())
-  
-  // Relations
-  vendorOrder     VendorOrder @relation(fields: [vendorOrderId], references: [id], onDelete: Cascade)
-  material        Inventory? @relation(fields: [materialId], references: [id])
-  
+  id            String      @id @default(cuid())
+  tenantId      String
+  vendorOrderId String
+  materialId    String?
+  inventoryId   String?
+  partNumber    String
+  name          String
+  description   String?
+  quantity      Float
+  unit          String?
+  receivedQty   Float       @default(0)
+  acceptedQty   Float       @default(0)
+  rejectedQty   Float       @default(0)
+  unitPrice     Float
+  totalPrice    Float
+  currency      String      @default("IDR")
+  qcRequired    Boolean     @default(true)
+  qcPassed      Boolean?
+  defectCode    String?
+  defectNotes   String?
+  batchNumber   String?
+  lotNumber     String?
+  notes         String?
+  createdAt     DateTime    @default(now())
+  material      Inventory?  @relation(fields: [materialId], references: [id])
+  vendorOrder   VendorOrder @relation(fields: [vendorOrderId], references: [id], onDelete: Cascade)
+
   @@index([tenantId])
   @@index([vendorOrderId])
   @@index([materialId])
 }
 
 model VendorShipment {
-  id              String   @id @default(cuid())
-  tenantId        String
-  vendorOrderId   String
-  shipmentNumber  String   @unique  // SHP-V-2026-001
-  
-  // Shipment Details
-  shipmentType    String   // INBOUND (from vendor), OUTBOUND (materials to vendor)
-  carrier         String?
-  trackingNumber  String?
-  
-  // Quantities
-  quantity        Float
-  unit            String?
-  
-  // Status
-  status          ShipmentStatus @default(SHIPPED)
-  
-  // Dates
-  shippedDate     DateTime
-  expectedDate    DateTime?
-  receivedDate    DateTime?
-  
-  // Inspection
-  inspectedBy     String?
-  inspectionResult String?  // ACCEPTED, REJECTED, PARTIAL
-  inspectionNotes String?
-  
-  notes           String?
-  createdAt       DateTime @default(now())
-  
-  // Relations
-  vendorOrder     VendorOrder @relation(fields: [vendorOrderId], references: [id])
-  
+  id               String         @id @default(cuid())
+  tenantId         String
+  vendorOrderId    String
+  shipmentNumber   String         @unique
+  shipmentType     String
+  carrier          String?
+  trackingNumber   String?
+  quantity         Float
+  unit             String?
+  status           ShipmentStatus @default("SHIPPED")
+  shippedDate      DateTime
+  expectedDate     DateTime?
+  receivedDate     DateTime?
+  inspectedBy      String?
+  inspectionResult String?
+  inspectionNotes  String?
+  notes            String?
+  createdAt        DateTime       @default(now())
+  vendorOrder      VendorOrder    @relation(fields: [vendorOrderId], references: [id])
+
   @@unique([tenantId, shipmentNumber])
   @@index([tenantId])
   @@index([vendorOrderId])
@@ -1050,86 +752,59 @@ model VendorShipment {
 }
 
 model VendorInvoice {
-  id              String   @id @default(cuid())
-  tenantId        String
-  vendorOrderId   String
-  invoiceNumber   String   @unique  // INV-V-2026-001
-  
-  // Invoice Details
-  invoiceDate     DateTime
-  dueDate         DateTime
-  
-  // Amounts
-  subtotal        Float
-  tax             Float    @default(0)
-  totalAmount     Float
-  currency        String   @default("IDR")
-  paidAmount      Float    @default(0)
-  balanceDue      Float
-  
-  // Status
-  status          InvoiceStatus @default(PENDING)
-  
-  // Payment
-  paymentDate     DateTime?
-  paymentMethod   String?
-  paymentRef      String?
-  
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  // Relations
-  vendorOrder     VendorOrder @relation(fields: [vendorOrderId], references: [id])
-  
+  id            String        @id @default(cuid())
+  tenantId      String
+  vendorOrderId String
+  invoiceNumber String        @unique
+  invoiceDate   DateTime
+  dueDate       DateTime
+  subtotal      Float
+  tax           Float         @default(0)
+  totalAmount   Float
+  currency      String        @default("IDR")
+  paidAmount    Float         @default(0)
+  balanceDue    Float
+  status        InvoiceStatus @default("PENDING")
+  paymentDate   DateTime?
+  paymentMethod String?
+  paymentRef    String?
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  vendorOrder   VendorOrder   @relation(fields: [vendorOrderId], references: [id])
+
   @@unique([tenantId, invoiceNumber])
   @@index([tenantId])
   @@index([vendorOrderId])
   @@index([status])
 }
 
-// ============================================
-// INVENTORY LOCATIONS & MATERIAL TRACKING
-// ============================================
-
 model Location {
-  id              String   @id @default(cuid())
-  tenantId        String
-  code            String   // WH-01, PPIC-01, PROD-01, etc.
-  name            String
-  description     String?
-  type            LocationType @default(WAREHOUSE)
-  
-  // Hierarchy
-  parentLocationId String?
-  parentLocation  Location? @relation("LocationHierarchy", fields: [parentLocationId], references: [id])
-  childLocations  Location[] @relation("LocationHierarchy")
-  
-  // Capacity & PIC
-  capacity        Int?     // Max items
-  area            Float?   // Area in sqm
-  picUserId       String?  // Person in charge
-  picUser         User? @relation("LocationPIC", fields: [picUserId], references: [id])
-  
-  // Address/Position
-  building        String?
-  floor           String?
-  zone            String?
-  
-  // Status
-  isActive        Boolean  @default(true)
-  
-  // Metadata
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  // Relations
-  shelves         Shelf[]
-  inventory       Inventory[]
-  outgoingHandoffs MaterialHandoff[] @relation("HandoffFromLocation")
-  incomingHandoffs MaterialHandoff[] @relation("HandoffToLocation")
+  id                String             @id @default(cuid())
+  tenantId          String
+  code              String
+  name              String
+  description       String?
+  type              LocationType       @default("WAREHOUSE")
+  parentLocationId  String?
+  capacity          Int?
+  area              Float?
+  picUserId         String?
+  building          String?
+  floor             String?
+  zone              String?
+  isActive          Boolean            @default(true)
+  notes             String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  inventory         Inventory[]
+  picUser           User?              @relation("LocationPIC", fields: [picUserId], references: [id])
+  parentLocation    Location?          @relation("LocationHierarchy", fields: [parentLocationId], references: [id])
+  childLocations    Location[]         @relation("LocationHierarchy")
+  incomingHandoffs  MaterialHandoff[]  @relation("HandoffToLocation")
+  outgoingHandoffs  MaterialHandoff[]  @relation("HandoffFromLocation")
   productionOutputs ProductionOutput[] @relation("ProductionOutputLocation")
+  shelves           Shelf[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -1139,34 +814,24 @@ model Location {
 }
 
 model Shelf {
-  id              String   @id @default(cuid())
-  tenantId        String
-  locationId      String
-  code            String   // A-01, A-02, B-01, etc.
-  name            String
-  description     String?
-  
-  // Position
-  row             String?
-  column          String?
-  level           String?
-  
-  // Capacity
-  capacity        Int?     // Max items
-  currentCount    Int      @default(0)
-  
-  // Status
-  isActive        Boolean  @default(true)
-  
-  // Metadata
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  // Relations
-  location        Location @relation(fields: [locationId], references: [id])
-  inventory       Inventory[]
+  id                String             @id @default(cuid())
+  tenantId          String
+  locationId        String
+  code              String
+  name              String
+  description       String?
+  row               String?
+  column            String?
+  level             String?
+  capacity          Int?
+  currentCount      Int                @default(0)
+  isActive          Boolean            @default(true)
+  notes             String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  inventory         Inventory[]
   productionOutputs ProductionOutput[] @relation("ProductionOutputShelf")
+  location          Location           @relation(fields: [locationId], references: [id])
 
   @@unique([tenantId, locationId, code])
   @@index([tenantId])
@@ -1174,58 +839,42 @@ model Shelf {
 }
 
 model MaterialHandoff {
-  id              String   @id @default(cuid())
-  tenantId        String
-  handoffNumber   String   // HO-2026-001
-  
-  // From/To Locations
-  fromLocationId  String
-  toLocationId    String
-  fromLocation    Location @relation("HandoffFromLocation", fields: [fromLocationId], references: [id])
-  toLocation      Location @relation("HandoffToLocation", fields: [toLocationId], references: [id])
-  
-  // From/To Personnel
-  handedBy        String   // User who hands over
-  receivedBy      String?  // User who receives
-  fromPicUserId   String?  // PIC at source
-  toPicUserId     String?  // PIC at destination
-  
-  // Reference
-  handoffType     HandoffType @default(STOCK_TRANSFER)
-  referenceType   String?  // MO, JOBSHEET, TASK, PR
-  referenceId     String?
-  moId            String?
-  jobsheetId      String?
-  taskId          String?
-  
-  // Status
-  status          HandoffStatus @default(PENDING)
-  
-  // Timing
-  requestedAt     DateTime @default(now())
-  handedAt        DateTime?
-  receivedAt      DateTime?
-  
-  // Documentation
-  notes           String?
-  deliveryNote    String?
-  trackingNumber  String?
-  
-  // Metadata
-  createdBy       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  // Relations
-  items           MaterialHandoffItem[]
-  mo              ManufacturingOrder? @relation(fields: [moId], references: [id])
-  jobsheet        Jobsheet? @relation(fields: [jobsheetId], references: [id])
-  task            MachiningTask? @relation(fields: [taskId], references: [id])
-  handedByUser    User @relation("HandoffHandedBy", fields: [handedBy], references: [id])
-  receivedByUser  User? @relation("HandoffReceivedBy", fields: [receivedBy], references: [id])
-  fromPicUser     User? @relation("HandoffFromPic", fields: [fromPicUserId], references: [id])
-  toPicUser       User? @relation("HandoffToPic", fields: [toPicUserId], references: [id])
-  qualityChecks   QualityCheck[]
+  id             String                @id @default(cuid())
+  tenantId       String
+  handoffNumber  String
+  fromLocationId String
+  toLocationId   String
+  handedBy       String
+  receivedBy     String?
+  fromPicUserId  String?
+  toPicUserId    String?
+  handoffType    HandoffType           @default("STOCK_TRANSFER")
+  referenceType  String?
+  referenceId    String?
+  moId           String?
+  jobsheetId     String?
+  taskId         String?
+  status         HandoffStatus         @default("PENDING")
+  requestedAt    DateTime              @default(now())
+  handedAt       DateTime?
+  receivedAt     DateTime?
+  notes          String?
+  deliveryNote   String?
+  trackingNumber String?
+  createdBy      String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  toPicUser      User?                 @relation("HandoffToPic", fields: [toPicUserId], references: [id])
+  fromPicUser    User?                 @relation("HandoffFromPic", fields: [fromPicUserId], references: [id])
+  receivedByUser User?                 @relation("HandoffReceivedBy", fields: [receivedBy], references: [id])
+  handedByUser   User                  @relation("HandoffHandedBy", fields: [handedBy], references: [id])
+  task           MachiningTask?        @relation(fields: [taskId], references: [id])
+  jobsheet       Jobsheet?             @relation(fields: [jobsheetId], references: [id])
+  mo             ManufacturingOrder?   @relation(fields: [moId], references: [id])
+  toLocation     Location              @relation("HandoffToLocation", fields: [toLocationId], references: [id])
+  fromLocation   Location              @relation("HandoffFromLocation", fields: [fromLocationId], references: [id])
+  items          MaterialHandoffItem[]
+  qualityChecks  QualityCheck[]
 
   @@unique([tenantId, handoffNumber])
   @@index([tenantId])
@@ -1237,39 +886,27 @@ model MaterialHandoff {
 }
 
 model MaterialHandoffItem {
-  id              String   @id @default(cuid())
-  tenantId        String
-  handoffId       String
-  inventoryId     String
+  id                    String               @id @default(cuid())
+  tenantId              String
+  handoffId             String
+  inventoryId           String
   materialRequirementId String?
-  
-  // Item Info
-  partNumber      String
-  name            String
-  
-  // Quantities
-  quantity        Float
-  unit            String?
-  
-  // Batch/Lot
-  fromBatch       String?
-  toBatch         String?
-  fromShelf       String?
-  toShelf         String?
-  
-  // Condition
-  condition       String   @default("GOOD") // GOOD, DAMAGED, EXPIRED
-  inspectedBy     String?
-  inspectedAt     DateTime?
-  
-  // Metadata
-  notes           String?
-  createdAt       DateTime @default(now())
-
-  // Relations
-  handoff         MaterialHandoff @relation(fields: [handoffId], references: [id], onDelete: Cascade)
-  inventory       Inventory @relation(fields: [inventoryId], references: [id])
-  materialRequirement MaterialRequirement? @relation(fields: [materialRequirementId], references: [id])
+  partNumber            String
+  name                  String
+  quantity              Float
+  unit                  String?
+  fromBatch             String?
+  toBatch               String?
+  fromShelf             String?
+  toShelf               String?
+  condition             String               @default("GOOD")
+  inspectedBy           String?
+  inspectedAt           DateTime?
+  notes                 String?
+  createdAt             DateTime             @default(now())
+  materialRequirement   MaterialRequirement? @relation(fields: [materialRequirementId], references: [id])
+  inventory             Inventory            @relation(fields: [inventoryId], references: [id])
+  handoff               MaterialHandoff      @relation(fields: [handoffId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([handoffId])
@@ -1277,73 +914,53 @@ model MaterialHandoffItem {
 }
 
 model Inventory {
-  id          String   @id @default(cuid())
-  tenantId    String
-  partNumber  String
-  name        String
-  description String?
-  category    String?
-  batch       String?
-  
-  quantity    Float    @default(0)
-  reservedQty Float    @default(0)
-  availableQty Float   @default(0)
-  unit        String?
-  
-  // Location tracking
-  locationId  String?  // Link to Location model
-  shelfId     String?  // Link to Shelf model
-  location    String?  // Legacy text field
-  shelf       String?  // Legacy text field
-  
-  // Current status
-  status      MaterialStatus @default(AVAILABLE)
-  currentProcess String?  // WAREHOUSE, PPIC, PRODUCTION, QC, etc.
-  
-  // Supplier
-  supplierId  String?
-  supplierRef String?
-  
-  // Pricing
-  unitPrice   Float?
-  currency    String?  @default("IDR")
-  
-  // Reorder
-  reorderPoint    Float?
-  reorderQuantity Float?
-  
-  // Dates
-  receivedAt  DateTime?
-  expiryDate  DateTime?
-  
-  // Batch/Lot tracking
-  manufactureDate DateTime?
-  lotNumber   String?
-  
-  // Current assignment
-  currentMoId     String?  // Currently assigned to MO
-  currentJobsheetId String? // Currently assigned to jobsheet
-  currentTaskId   String?  // Currently assigned to task
-  
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  supplier        Supplier? @relation(fields: [supplierId], references: [id])
-  locationRel     Location? @relation(fields: [locationId], references: [id])
-  shelfRel        Shelf? @relation(fields: [shelfId], references: [id])
-  reservations    InventoryReservation[]
-  transactions    InventoryTransaction[]
-  purchaseOrderItems PurchaseOrderItem[]
-  recipeIngredients RecipeIngredient[]
+  id                   String                 @id @default(cuid())
+  tenantId             String
+  partNumber           String
+  name                 String
+  description          String?
+  category             String?
+  batch                String?
+  quantity             Float                  @default(0)
+  reservedQty          Float                  @default(0)
+  availableQty         Float                  @default(0)
+  unit                 String?
+  locationId           String?
+  shelfId              String?
+  location             String?
+  shelf                String?
+  status               MaterialStatus         @default("AVAILABLE")
+  currentProcess       String?
+  supplierId           String?
+  supplierRef          String?
+  unitPrice            Float?
+  currency             String?                @default("IDR")
+  reorderPoint         Float?
+  reorderQuantity      Float?
+  receivedAt           DateTime?
+  expiryDate           DateTime?
+  manufactureDate      DateTime?
+  lotNumber            String?
+  currentMoId          String?
+  currentJobsheetId    String?
+  currentTaskId        String?
+  notes                String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  shelfRel             Shelf?                 @relation(fields: [shelfId], references: [id])
+  locationRel          Location?              @relation(fields: [locationId], references: [id])
+  supplier             Supplier?              @relation(fields: [supplierId], references: [id])
+  reservations         InventoryReservation[]
+  transactions         InventoryTransaction[]
+  handoffItems         MaterialHandoffItem[]
   materialRequirements MaterialRequirement[]
+  purchaseOrderItems   PurchaseOrderItem[]
   purchaseRequestItems PurchaseRequestItem[]
-  handoffItems    MaterialHandoffItem[]
-  qualityChecks   QualityCheck[]
-  reworkOrders    ReworkOrder[]
-  reworkItems     ReworkOrderItem[]
-  vendorOrderItems VendorOrderItem[]
+  qualityChecks        QualityCheck[]
+  recipeIngredients    RecipeIngredient[]
+  reworkOrders         ReworkOrder[]
+  reworkItems          ReworkOrderItem[]
+  vendorOrderItems     VendorOrderItem[]
 
   @@unique([tenantId, partNumber, batch])
   @@index([tenantId])
@@ -1356,29 +973,25 @@ model Inventory {
 }
 
 model InventoryReservation {
-  id          String   @id @default(cuid())
-  tenantId    String
-  inventoryId String
-  orderId     String?
-  moId        String?
-  materialRequirementId String?  // Link to material requirement
-  quantity    Float
-  
-  status      ReservationStatus @default(ALLOCATED)
-  
-  reservedAt  DateTime @default(now())
-  releasedAt  DateTime?
-  consumedAt  DateTime?
-  
-  notes       String?
-  createdBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  inventory   Inventory @relation(fields: [inventoryId], references: [id])
-  order       Order?    @relation(fields: [orderId], references: [id])
-  mo          ManufacturingOrder? @relation(fields: [moId], references: [id])
-  materialRequirement MaterialRequirement? @relation(fields: [materialRequirementId], references: [id])
+  id                    String               @id @default(cuid())
+  tenantId              String
+  inventoryId           String
+  orderId               String?
+  moId                  String?
+  materialRequirementId String?
+  quantity              Float
+  status                ReservationStatus    @default("ALLOCATED")
+  reservedAt            DateTime             @default(now())
+  releasedAt            DateTime?
+  consumedAt            DateTime?
+  notes                 String?
+  createdBy             String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  materialRequirement   MaterialRequirement? @relation(fields: [materialRequirementId], references: [id])
+  mo                    ManufacturingOrder?  @relation(fields: [moId], references: [id])
+  order                 Order?               @relation(fields: [orderId], references: [id])
+  inventory             Inventory            @relation(fields: [inventoryId], references: [id])
 
   @@index([tenantId])
   @@index([inventoryId])
@@ -1389,41 +1002,35 @@ model InventoryReservation {
 }
 
 model InventoryTransaction {
-  id              String   @id @default(cuid())
-  tenantId        String
-  inventoryId     String
-  type            TransactionType
-  
-  quantity        Float
-  balance         Float
-  
-  fromLocation    String?
-  toLocation      String?
-  fromBatch       String?
-  toBatch         String?
-  
-  referenceType   String?
-  referenceId     String?
-  purchaseOrderId String?
-  orderId         String?
-  moId            String?
+  id                 String              @id @default(cuid())
+  tenantId           String
+  inventoryId        String
+  type               TransactionType
+  quantity           Float
+  balance            Float
+  fromLocation       String?
+  toLocation         String?
+  fromBatch          String?
+  toBatch            String?
+  referenceType      String?
+  referenceId        String?
+  purchaseOrderId    String?
+  orderId            String?
+  moId               String?
   productionOutputId String?
-  
-  handoffStatus   HandoffStatus?
-  expectedDate    DateTime?
-  actualDate      DateTime?
-  carrier         String?
-  trackingNumber  String?
-  
-  notes           String?
-  createdBy       String?
-  createdAt       DateTime @default(now())
-
-  inventory       Inventory @relation(fields: [inventoryId], references: [id])
-  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
-  order           Order? @relation(fields: [orderId], references: [id])
-  mo              ManufacturingOrder? @relation(fields: [moId], references: [id])
-  productionOutput ProductionOutput? @relation(fields: [productionOutputId], references: [id])
+  handoffStatus      HandoffStatus?
+  expectedDate       DateTime?
+  actualDate         DateTime?
+  carrier            String?
+  trackingNumber     String?
+  notes              String?
+  createdBy          String?
+  createdAt          DateTime            @default(now())
+  productionOutput   ProductionOutput?   @relation(fields: [productionOutputId], references: [id])
+  mo                 ManufacturingOrder? @relation(fields: [moId], references: [id])
+  order              Order?              @relation(fields: [orderId], references: [id])
+  purchaseOrder      PurchaseOrder?      @relation(fields: [purchaseOrderId], references: [id])
+  inventory          Inventory           @relation(fields: [inventoryId], references: [id])
 
   @@index([tenantId])
   @@index([inventoryId])
@@ -1433,30 +1040,25 @@ model InventoryTransaction {
 }
 
 model PurchaseOrder {
-  id              String   @id @default(cuid())
-  tenantId        String
-  supplierId      String
-  poNumber        String
-  status          POStatus @default(DRAFT)
-  
-  totalAmount     Float    @default(0)
-  currency        String   @default("IDR")
-  
-  orderDate       DateTime @default(now())
-  expectedDate    DateTime?
-  receivedDate    DateTime?
-  
-  odooPoId        String?
-  odooSyncedAt    DateTime?
-  
-  notes           String?
-  createdBy       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  supplier        Supplier @relation(fields: [supplierId], references: [id])
-  items           PurchaseOrderItem[]
-  transactions    InventoryTransaction[]
+  id           String                 @id @default(cuid())
+  tenantId     String
+  supplierId   String
+  poNumber     String
+  status       POStatus               @default("DRAFT")
+  totalAmount  Float                  @default(0)
+  currency     String                 @default("IDR")
+  orderDate    DateTime               @default(now())
+  expectedDate DateTime?
+  receivedDate DateTime?
+  odooPoId     String?
+  odooSyncedAt DateTime?
+  notes        String?
+  createdBy    String?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  transactions InventoryTransaction[]
+  supplier     Supplier               @relation(fields: [supplierId], references: [id])
+  items        PurchaseOrderItem[]
 
   @@unique([tenantId, poNumber])
   @@index([tenantId])
@@ -1466,67 +1068,55 @@ model PurchaseOrder {
 }
 
 model PurchaseOrderItem {
-  id              String   @id @default(cuid())
+  id              String        @id @default(cuid())
   tenantId        String
   purchaseOrderId String
   inventoryId     String?
   partNumber      String
   name            String
   description     String?
-  
   quantity        Float
   unitPrice       Float
   totalPrice      Float
-  receivedQty     Float   @default(0)
+  receivedQty     Float         @default(0)
   unit            String?
-  
-  status          POItemStatus @default(PENDING)
-  
+  status          POItemStatus  @default("PENDING")
   notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  inventory       Inventory?    @relation(fields: [inventoryId], references: [id])
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
-  inventory       Inventory? @relation(fields: [inventoryId], references: [id])
 
   @@index([tenantId])
   @@index([purchaseOrderId])
   @@index([inventoryId])
 }
 
-// ============================================
-// RECIPE / BOM MANAGEMENT
-// ============================================
-
 model Recipe {
-  id              String   @id @default(cuid())
-  tenantId        String
-  code            String
-  name            String
-  description     String?
-  version         String   @default("1.0")
-  category        String?
-  
-  outputPartNumber String
-  outputName       String
-  outputQuantity   Float   @default(1)
-  outputUnit       String?
-  
-  isActive        Boolean  @default(true)
-  isApproved      Boolean  @default(false)
-  approvedBy      String?
-  approvedAt      DateTime?
-  
-  notes           String?
-  createdBy       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  ingredients     RecipeIngredient[]
-  parentRecipe    Recipe? @relation("RecipeVersions", fields: [parentRecipeId], references: [id])
-  parentRecipeId  String?
-  childRecipes    Recipe[] @relation("RecipeVersions")
+  id                  String               @id @default(cuid())
+  tenantId            String
+  code                String
+  name                String
+  description         String?
+  version             String               @default("1.0")
+  category            String?
+  outputPartNumber    String
+  outputName          String
+  outputQuantity      Float                @default(1)
+  outputUnit          String?
+  isActive            Boolean              @default(true)
+  isApproved          Boolean              @default(false)
+  approvedBy          String?
+  approvedAt          DateTime?
+  notes               String?
+  createdBy           String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  parentRecipeId      String?
   manufacturingOrders ManufacturingOrder[]
+  parentRecipe        Recipe?              @relation("RecipeVersions", fields: [parentRecipeId], references: [id])
+  childRecipes        Recipe[]             @relation("RecipeVersions")
+  ingredients         RecipeIngredient[]
 
   @@unique([tenantId, code, version])
   @@index([tenantId])
@@ -1534,75 +1124,55 @@ model Recipe {
 }
 
 model RecipeIngredient {
-  id              String   @id @default(cuid())
-  tenantId        String
-  recipeId        String
-  inventoryId     String?
-  partNumber      String
-  name            String
-  quantity        Float
-  unit            String?
-  
-  mixOrder        Int      @default(0)
-  mixPercentage   Float?
-  isCritical      Boolean  @default(false)
-  
-  wastePercentage Float   @default(0)
-  
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  recipe          Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
-  inventory       Inventory? @relation(fields: [inventoryId], references: [id])
+  id                   String                @id @default(cuid())
+  tenantId             String
+  recipeId             String
+  inventoryId          String?
+  partNumber           String
+  name                 String
+  quantity             Float
+  unit                 String?
+  mixOrder             Int                   @default(0)
+  mixPercentage        Float?
+  isCritical           Boolean               @default(false)
+  wastePercentage      Float                 @default(0)
+  notes                String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
   materialRequirements MaterialRequirement[]
+  inventory            Inventory?            @relation(fields: [inventoryId], references: [id])
+  recipe               Recipe                @relation(fields: [recipeId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([recipeId])
   @@index([inventoryId])
 }
 
-// ============================================
-// USER & ROLE MANAGEMENT
-// ============================================
-
 model User {
-  id        String   @id @default(cuid())
-  tenantId  String
-  email     String
-  name      String?
-  phone     String?
-
-  roleId    String
-  role      Role     @relation(fields: [roleId], references: [id])
-
-  passwordHash String
-
-  isActive  Boolean  @default(true)
-
-  avatarUrl String?
-  employeeId String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  assignedTasks MachiningTask[]
-  userSettings  UserSettings?
-  
-  // Handoff relations
-  handedOverHandoffs  MaterialHandoff[] @relation("HandoffHandedBy")
-  receivedHandoffs    MaterialHandoff[] @relation("HandoffReceivedBy")
-  fromPicHandoffs     MaterialHandoff[] @relation("HandoffFromPic")
-  toPicHandoffs       MaterialHandoff[] @relation("HandoffToPic")
-  
-  // Location PIC
-  managedLocations    Location[] @relation("LocationPIC")
-  
-  // Quality Control
-  qualityInspections  QualityCheck[]
-  assignedReworks     ReworkOrder[]
-  reworkTasks         ReworkTask[]
-  productionOutputs   ProductionOutput[]
+  id                 String             @id @default(cuid())
+  tenantId           String
+  email              String
+  name               String?
+  phone              String?
+  roleId             String
+  passwordHash       String
+  isActive           Boolean            @default(true)
+  avatarUrl          String?
+  employeeId         String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  managedLocations   Location[]         @relation("LocationPIC")
+  assignedTasks      MachiningTask[]
+  toPicHandoffs      MaterialHandoff[]  @relation("HandoffToPic")
+  fromPicHandoffs    MaterialHandoff[]  @relation("HandoffFromPic")
+  receivedHandoffs   MaterialHandoff[]  @relation("HandoffReceivedBy")
+  handedOverHandoffs MaterialHandoff[]  @relation("HandoffHandedBy")
+  productionOutputs  ProductionOutput[]
+  qualityInspections QualityCheck[]
+  assignedReworks    ReworkOrder[]
+  reworkTasks        ReworkTask[]
+  role               Role               @relation(fields: [roleId], references: [id])
+  userSettings       UserSettings?
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -1611,102 +1181,309 @@ model User {
 }
 
 model Role {
-  id          String   @id @default(cuid())
-  name        String
-  code        String   @unique
-  description String?
-  isSystem    Boolean  @default(false)
-
-  users       User[]
+  id              String           @id @default(cuid())
+  name            String
+  code            String           @unique
+  description     String?
+  isSystem        Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
   rolePermissions RolePermission[]
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  users           User[]
 
   @@index([code])
 }
 
 model Permission {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  name        String
-  description String?
-  category    String
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  id              String           @id @default(cuid())
+  code            String           @unique
+  name            String
+  description     String?
+  category        String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
   rolePermissions RolePermission[]
 }
 
 model RolePermission {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   roleId       String
   permissionId String
-  
-  canRead      Boolean  @default(false)
-  canWrite     Boolean  @default(false)
-  canDelete    Boolean  @default(false)
-  canApprove   Boolean  @default(false)
-  
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  role         Role @relation(fields: [roleId], references: [id])
+  canRead      Boolean    @default(false)
+  canWrite     Boolean    @default(false)
+  canDelete    Boolean    @default(false)
+  canApprove   Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
   permission   Permission @relation(fields: [permissionId], references: [id])
+  role         Role       @relation(fields: [roleId], references: [id])
 
   @@unique([roleId, permissionId])
 }
 
-// ============================================
-// USER & SYSTEM SETTINGS
-// ============================================
-
 model UserSettings {
-  id            String   @id @default(cuid())
-  userId        String   @unique
-
-  theme         String   @default("light")
-  language      String   @default("en")
-  timezone      String   @default("UTC")
-
-  emailNotifications   Boolean @default(true)
-  taskReminders       Boolean @default(true)
-  breakdownAlerts     Boolean @default(true)
-  inventoryAlerts     Boolean @default(true)
-
-  defaultView   String   @default("dashboard")
-  showInactiveMachines Boolean @default(false)
-  showCompletedTasks Boolean @default(false)
-
-  rowsPerPage   Int      @default(25)
-
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  user          User @relation(fields: [userId], references: [id])
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  theme                String   @default("light")
+  language             String   @default("en")
+  timezone             String   @default("UTC")
+  emailNotifications   Boolean  @default(true)
+  taskReminders        Boolean  @default(true)
+  breakdownAlerts      Boolean  @default(true)
+  inventoryAlerts      Boolean  @default(true)
+  defaultView          String   @default("dashboard")
+  showInactiveMachines Boolean  @default(false)
+  showCompletedTasks   Boolean  @default(false)
+  rowsPerPage          Int      @default(25)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  user                 User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
 }
 
 model SystemSettings {
-  id            String   @id @default(cuid())
-  key           String   @unique
-  category      String
-  value         String
-  description   String?
-  type          String   @default("string")
-  isPublic      Boolean  @default(false)
-
-  updatedAt     DateTime @updatedAt
+  id          String   @id @default(cuid())
+  key         String   @unique
+  category    String
+  value       String
+  description String?
+  type        String   @default("string")
+  isPublic    Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
 
   @@index([category])
   @@index([key])
 }
 
-// ============================================
-// ENUMS
-// ============================================
+model QualityCheck {
+  id                       String              @id @default(cuid())
+  tenantId                 String
+  qcNumber                 String              @unique
+  referenceType            String
+  referenceId              String
+  orderId                  String?
+  moId                     String?
+  inventoryId              String?
+  handoffId                String?
+  checkType                QCType
+  inspectionStage          String
+  partNumber               String
+  productName              String
+  batch                    String?
+  quantity                 Float
+  unit                     String?
+  status                   QCStatus            @default("PENDING")
+  passQuantity             Float               @default(0)
+  failQuantity             Float               @default(0)
+  reworkQuantity           Float               @default(0)
+  scrapQuantity            Float               @default(0)
+  defectCode               String?
+  defectDescription        String?
+  defectCategory           String?
+  inspectorId              String?
+  inspectedAt              DateTime?
+  dueDate                  DateTime?
+  completedAt              DateTime?
+  reworkRequired           Boolean             @default(false)
+  customerApprovalRequired Boolean             @default(false)
+  customerApproved         Boolean             @default(false)
+  customerApprovedAt       DateTime?
+  customerApprovedBy       String?
+  notes                    String?
+  attachments              String?
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+  inspector                User?               @relation(fields: [inspectorId], references: [id])
+  handoff                  MaterialHandoff?    @relation(fields: [handoffId], references: [id])
+  inventory                Inventory?          @relation(fields: [inventoryId], references: [id])
+  manufacturingOrder       ManufacturingOrder? @relation(fields: [moId], references: [id])
+  order                    Order?              @relation(fields: [orderId], references: [id])
+  checkItems               QualityCheckItem[]
+  reworkOrder              ReworkOrder?        @relation("QualityCheckToRework")
+
+  @@unique([tenantId, qcNumber])
+  @@index([tenantId])
+  @@index([referenceType, referenceId])
+  @@index([orderId])
+  @@index([moId])
+  @@index([status])
+  @@index([checkType])
+}
+
+model QualityCheckItem {
+  id             String       @id @default(cuid())
+  tenantId       String
+  qualityCheckId String
+  criteriaCode   String
+  criteriaName   String
+  description    String?
+  category       String
+  checkMethod    String?
+  specification  String?
+  minValue       Float?
+  maxValue       Float?
+  targetValue    Float?
+  unit           String?
+  actualValue    Float?
+  actualText     String?
+  result         QCItemResult
+  defectCode     String?
+  defectSeverity String?
+  defectNotes    String?
+  measurements   String?
+  order          Int          @default(0)
+  notes          String?
+  createdAt      DateTime     @default(now())
+  qualityCheck   QualityCheck @relation(fields: [qualityCheckId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([qualityCheckId])
+  @@index([result])
+}
+
+model ReworkOrder {
+  id                   String              @id @default(cuid())
+  tenantId             String
+  reworkNumber         String              @unique
+  qualityCheckId       String              @unique
+  orderId              String?
+  moId                 String?
+  inventoryId          String?
+  reworkType           ReworkType
+  priority             String              @default("MEDIUM")
+  partNumber           String
+  productName          String
+  batch                String?
+  quantity             Float
+  unit                 String?
+  defectCode           String?
+  defectDescription    String
+  rootCause            String?
+  instructions         String?
+  requiredMaterials    String?
+  estimatedCost        Float?
+  estimatedHours       Float?
+  status               ReworkStatus        @default("PENDING")
+  completionPercentage Float               @default(0)
+  assignedToId         String?
+  assignedAt           DateTime?
+  startedAt            DateTime?
+  completedAt          DateTime?
+  resultQuantity       Float?
+  scrapQuantity        Float?
+  resultNotes          String?
+  requiresReinspection Boolean             @default(true)
+  reinspectionPassed   Boolean             @default(false)
+  reinspectionDate     DateTime?
+  notes                String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  assignedTo           User?               @relation(fields: [assignedToId], references: [id])
+  inventory            Inventory?          @relation(fields: [inventoryId], references: [id])
+  manufacturingOrder   ManufacturingOrder? @relation(fields: [moId], references: [id])
+  order                Order?              @relation(fields: [orderId], references: [id])
+  qualityCheck         QualityCheck        @relation("QualityCheckToRework", fields: [qualityCheckId], references: [id])
+  items                ReworkOrderItem[]
+  tasks                ReworkTask[]
+
+  @@unique([tenantId, reworkNumber])
+  @@index([tenantId])
+  @@index([qualityCheckId])
+  @@index([status])
+  @@index([reworkType])
+}
+
+model ReworkOrderItem {
+  id            String      @id @default(cuid())
+  tenantId      String
+  reworkOrderId String
+  inventoryId   String?
+  partNumber    String
+  name          String
+  quantity      Float
+  unit          String?
+  fromBatch     String?
+  fromShelf     String?
+  fromLocation  String?
+  usedQuantity  Float       @default(0)
+  wasteQuantity Float       @default(0)
+  notes         String?
+  createdAt     DateTime    @default(now())
+  inventory     Inventory?  @relation(fields: [inventoryId], references: [id])
+  reworkOrder   ReworkOrder @relation(fields: [reworkOrderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([reworkOrderId])
+}
+
+model ReworkTask {
+  id             String           @id @default(cuid())
+  tenantId       String
+  reworkOrderId  String
+  taskNumber     String?
+  title          String
+  description    String?
+  sequence       Int              @default(0)
+  machineId      String?
+  estimatedHours Float?
+  actualHours    Float?
+  status         ReworkTaskStatus @default("PENDING")
+  assignedToId   String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  notes          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  assignedTo     User?            @relation(fields: [assignedToId], references: [id])
+  machine        Machine?         @relation(fields: [machineId], references: [id])
+  reworkOrder    ReworkOrder      @relation(fields: [reworkOrderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([reworkOrderId])
+  @@index([status])
+}
+
+model OdooSyncLog {
+  id            String   @id @default(cuid())
+  tenantId      String
+  syncType      String
+  status        String
+  message       String?
+  details       String?
+  odooPoId      String?
+  odooReceiptId String?
+  syncedAt      DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([syncType])
+  @@index([syncedAt])
+}
+
+enum DependencyEntityType {
+  TASK
+  JOBSHEET
+  MO
+  ORDER
+}
+
+enum DependencyType {
+  FINISH_TO_START
+  START_TO_START
+  FINISH_TO_FINISH
+  START_TO_FINISH
+}
+
+enum ProductionOutputStatus {
+  IN_PROGRESS
+  COMPLETED
+  QC_PASSED
+  QC_FAILED
+  REWORK
+  SCRAPPED
+  STORED
+}
 
 enum OrderStatus {
   DRAFT
@@ -1894,288 +1671,12 @@ enum PRItemStatus {
   RECEIVED
 }
 
-// ============================================
-// QUALITY CONTROL & REWORK
-// ============================================
-
-model QualityCheck {
-  id                String   @id @default(cuid())
-  tenantId          String
-  qcNumber          String   @unique  // QC-2026-001
-  
-  // What is being checked
-  referenceType     String   // ORDER, MO, INVENTORY, HANDOFF
-  referenceId       String   // ID of the referenced entity
-  orderId           String?
-  moId              String?
-  inventoryId       String?
-  handoffId         String?
-  
-  // Check type
-  checkType         QCType   // INCOMING, IN_PROCESS, FINAL, CUSTOMER
-  inspectionStage   String   // PRE_PRODUCTION, DURING_PRODUCTION, POST_PRODUCTION, PRE_SHIPMENT
-  
-  // Product info
-  partNumber        String
-  productName       String
-  batch             String?
-  quantity          Float
-  unit              String?
-  
-  // Overall result
-  status            QCStatus @default(PENDING)  // PENDING, IN_PROGRESS, PASSED, FAILED, REWORK
-  passQuantity      Float    @default(0)
-  failQuantity      Float    @default(0)
-  reworkQuantity    Float    @default(0)
-  scrapQuantity     Float    @default(0)
-  
-  // Defect summary
-  defectCode        String?
-  defectDescription String?
-  defectCategory    String?  // COSMETIC, FUNCTIONAL, DIMENSIONAL, MATERIAL
-  
-  // Inspection details
-  inspectorId       String?
-  inspectedAt       DateTime?
-  dueDate           DateTime?
-  completedAt       DateTime?
-  
-  // Rework info
-  reworkRequired    Boolean  @default(false)
-  
-  // Customer info (for customer QC)
-  customerApprovalRequired Boolean @default(false)
-  customerApproved Boolean @default(false)
-  customerApprovedAt DateTime?
-  customerApprovedBy String?
-  
-  // Notes
-  notes             String?
-  attachments       String?  // JSON array of file paths
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  // Relations
-  order             Order? @relation(fields: [orderId], references: [id])
-  manufacturingOrder ManufacturingOrder? @relation(fields: [moId], references: [id])
-  inventory         Inventory? @relation(fields: [inventoryId], references: [id])
-  handoff           MaterialHandoff? @relation(fields: [handoffId], references: [id])
-  inspector         User? @relation(fields: [inspectorId], references: [id])
-  checkItems        QualityCheckItem[]
-  reworkOrder       ReworkOrder? @relation("QualityCheckToRework")
-  
-  @@unique([tenantId, qcNumber])
-  @@index([tenantId])
-  @@index([referenceType, referenceId])
-  @@index([orderId])
-  @@index([moId])
-  @@index([status])
-  @@index([checkType])
-}
-
-model QualityCheckItem {
-  id              String   @id @default(cuid())
-  tenantId        String
-  qualityCheckId  String
-  
-  // Check criteria
-  criteriaCode    String
-  criteriaName    String
-  description     String?
-  category        String   // VISUAL, DIMENSIONAL, FUNCTIONAL, MATERIAL
-  checkMethod     String?  // VISUAL, MEASURE, TEST, CALIBRATE
-  
-  // Expected values
-  specification   String?
-  minValue        Float?
-  maxValue        Float?
-  targetValue     Float?
-  unit            String?
-  
-  // Actual values
-  actualValue     Float?
-  actualText      String?
-  
-  // Result
-  result          QCItemResult  // PASS, FAIL, NA
-  defectCode      String?
-  defectSeverity  String?  // MINOR, MAJOR, CRITICAL
-  defectNotes     String?
-  
-  // Measurements (for dimensional checks)
-  measurements    String?  // JSON array of measurement data
-  
-  order           Int      @default(0)
-  notes           String?
-  
-  createdAt       DateTime @default(now())
-  
-  // Relations
-  qualityCheck    QualityCheck @relation(fields: [qualityCheckId], references: [id], onDelete: Cascade)
-  
-  @@index([tenantId])
-  @@index([qualityCheckId])
-  @@index([result])
-}
-
-model ReworkOrder {
-  id                String   @id @default(cuid())
-  tenantId          String
-  reworkNumber      String   @unique  // RW-2026-001
-  
-  // Source
-  qualityCheckId    String   @unique
-  orderId           String?
-  moId              String?
-  inventoryId       String?
-  
-  // Rework details
-  reworkType        ReworkType  // REPAIR, REPROCESS, REGRIND, REWORK
-  priority          String      @default("MEDIUM")  // LOW, MEDIUM, HIGH, URGENT
-  
-  // Product info
-  partNumber        String
-  productName       String
-  batch             String?
-  quantity          Float
-  unit              String?
-  
-  // Defect info
-  defectCode        String?
-  defectDescription String
-  rootCause         String?
-  
-  // Rework instructions
-  instructions      String?
-  requiredMaterials String?  // JSON of additional materials needed
-  estimatedCost     Float?
-  estimatedHours    Float?
-  
-  // Status
-  status            ReworkStatus @default(PENDING)  // PENDING, IN_PROGRESS, COMPLETED, FAILED, CANCELLED
-  completionPercentage Float @default(0)
-  
-  // Assignment
-  assignedToId      String?
-  assignedAt        DateTime?
-  
-  // Tracking
-  startedAt         DateTime?
-  completedAt       DateTime?
-  
-  // Result
-  resultQuantity    Float?
-  scrapQuantity     Float?
-  resultNotes       String?
-  
-  // Re-inspection
-  requiresReinspection Boolean @default(true)
-  reinspectionPassed   Boolean @default(false)
-  reinspectionDate     DateTime?
-  
-  notes             String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  // Relations
-  qualityCheck      QualityCheck @relation("QualityCheckToRework", fields: [qualityCheckId], references: [id])
-  order             Order? @relation(fields: [orderId], references: [id])
-  manufacturingOrder ManufacturingOrder? @relation(fields: [moId], references: [id])
-  inventory         Inventory? @relation(fields: [inventoryId], references: [id])
-  assignedTo        User? @relation(fields: [assignedToId], references: [id])
-  items             ReworkOrderItem[]
-  tasks             ReworkTask[]
-  
-  @@unique([tenantId, reworkNumber])
-  @@index([tenantId])
-  @@index([qualityCheckId])
-  @@index([status])
-  @@index([reworkType])
-}
-
-model ReworkOrderItem {
-  id              String   @id @default(cuid())
-  tenantId        String
-  reworkOrderId   String
-  inventoryId     String?
-  
-  // Item details
-  partNumber      String
-  name            String
-  quantity        Float
-  unit            String?
-  
-  // Source
-  fromBatch       String?
-  fromShelf       String?
-  fromLocation    String?
-  
-  // Usage in rework
-  usedQuantity    Float    @default(0)
-  wasteQuantity   Float    @default(0)
-  
-  notes           String?
-  createdAt       DateTime @default(now())
-  
-  // Relations
-  reworkOrder     ReworkOrder @relation(fields: [reworkOrderId], references: [id], onDelete: Cascade)
-  inventory       Inventory? @relation(fields: [inventoryId], references: [id])
-  
-  @@index([tenantId])
-  @@index([reworkOrderId])
-}
-
-model ReworkTask {
-  id              String   @id @default(cuid())
-  tenantId        String
-  reworkOrderId   String
-  taskNumber      String?
-  
-  // Task details
-  title           String
-  description     String?
-  sequence        Int      @default(0)
-  
-  // Work center/machine
-  machineId       String?
-  
-  // Time tracking
-  estimatedHours  Float?
-  actualHours     Float?
-  
-  // Status
-  status          ReworkTaskStatus @default(PENDING)  // PENDING, IN_PROGRESS, COMPLETED, BLOCKED
-  
-  // Assignment
-  assignedToId    String?
-  
-  // Timing
-  startedAt       DateTime?
-  completedAt     DateTime?
-  
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  // Relations
-  reworkOrder     ReworkOrder @relation(fields: [reworkOrderId], references: [id], onDelete: Cascade)
-  machine         Machine? @relation(fields: [machineId], references: [id])
-  assignedTo      User? @relation(fields: [assignedToId], references: [id])
-  
-  @@index([tenantId])
-  @@index([reworkOrderId])
-  @@index([status])
-}
-
-// New enums for QC
-
 enum QCType {
-  INCOMING      // Raw material inspection
-  IN_PROCESS    // During production
-  FINAL         // Finished goods inspection
-  CUSTOMER      // Customer-required inspection
-  PERIODIC      // Periodic audit
+  INCOMING
+  IN_PROCESS
+  FINAL
+  CUSTOMER
+  PERIODIC
 }
 
 enum QCStatus {
@@ -2191,16 +1692,16 @@ enum QCStatus {
 enum QCItemResult {
   PASS
   FAIL
-  NA  // Not Applicable
+  NA
 }
 
 enum ReworkType {
-  REPAIR        // Minor fix
-  REPROCESS     // Run through process again
-  REGRIND       // Material regrinding
-  REWORK        // Full rework
-  SALVAGE       // Use as-is with concession
-  SCRAP         // Disposal
+  REPAIR
+  REPROCESS
+  REGRIND
+  REWORK
+  SALVAGE
+  SCRAP
 }
 
 enum ReworkStatus {
@@ -2218,7 +1719,6 @@ enum ReworkTaskStatus {
   BLOCKED
 }
 
-// Contract Manufacturing Enums
 enum SupplierType {
   MATERIAL
   CONTRACT_MANUFACTURER
@@ -2226,10 +1726,10 @@ enum SupplierType {
 }
 
 enum OutsourceType {
-  FULL           // Full product manufacturing
-  PARTIAL        // Partial process outsourcing
-  SUBCONTRACT    // Specific operation subcontracting
-  TOLL_MANUFACTURING  // Toll manufacturing
+  FULL
+  PARTIAL
+  SUBCONTRACT
+  TOLL_MANUFACTURING
 }
 
 enum VendorOrderStatus {
@@ -2264,7 +1764,6 @@ enum InvoiceStatus {
   CANCELLED
 }
 
-// Material Allocation Enums
 enum JobsheetMaterialStatus {
   ALLOCATED
   IN_USE
@@ -2279,21 +1778,4 @@ enum TaskMaterialStatus {
   CONSUMED
   WASTED
   RETURNED
-}
-
-model OdooSyncLog {
-  id          String   @id @default(cuid())
-  tenantId    String
-  syncType    String   // PURCHASE_ORDER, GOODS_RECEIPT, etc.
-  status      String   // SUCCESS, FAILED, PENDING
-  message     String?
-  details     String?  // JSON details
-  odooPoId    String?
-  odooReceiptId String?
-  syncedAt    DateTime @default(now())
-  createdAt   DateTime @default(now())
-  
-  @@index([tenantId])
-  @@index([syncType])
-  @@index([syncedAt])
 }

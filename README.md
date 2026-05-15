@@ -1,3 +1,4 @@
+Continue  opencode -s ses_1de7e6477ffeXRgMumfOgJf8BR
 # 🏭 ManuOS - Manufacturing Operating System
 
 A modern, production-ready manufacturing management system built with cutting-edge web technologies. ManuOS provides complete production planning, scheduling, and execution capabilities for modern manufacturing operations.

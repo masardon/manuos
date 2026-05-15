@@ -134,11 +134,11 @@ export async function POST(request: NextRequest) {
         goodInventory: result.goodInventory ? {
           id: result.goodInventory.id,
           partNumber: result.goodInventory.partNumber,
-          quantity: result.goodInventory.currentQuantity,
+          quantity: result.goodInventory.quantity,
         } : null,
         reworkInventory: result.reworkInventory ? {
           id: result.reworkInventory.id,
-          quantity: result.reworkInventory.currentQuantity,
+          quantity: result.reworkInventory.quantity,
         } : null,
       },
       message: 'Production output recorded and inventory updated',

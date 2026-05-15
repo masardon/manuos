@@ -841,6 +841,19 @@ type TaskStatus = 'PENDING' | 'ASSIGNED' | 'RUNNING' | 'PAUSED' |
 // Event Types
 type InventoryEventType = 'INVENTORY_UPDATE' | 'RESERVATION_UPDATE' | 
                           'ALLOCATION_UPDATE' | 'HANDOFF_UPDATE'
+
+// Inventory Ledger Types
+type InventoryTransactionType = 'RECEIPT' | 'ISSUE' | 'CONSUMPTION' | 
+                                 'PRODUCTION_OUTPUT' | 'TRANSFER' | 
+                                 'ADJUSTMENT' | 'QC_PASS' | 'QC_FAIL' | 
+                                 'SCRAP' | 'REWORK_CONSUMPTION'
+
+type HandoffStatus = 'CREATED' | 'MOVED' | 'ISSUED' | 'CONFIRMED' | 
+                     'COMPLETED' | 'CANCELLED'
+
+// Dependency Types
+type DependencyType = 'FINISH_TO_START' | 'START_TO_START' | 
+                      'FINISH_TO_FINISH' | 'START_TO_FINISH'
 ```
 
 ### B. Configuration Files
@@ -885,5 +898,436 @@ npm run typecheck           # Type checking
 
 ---
 
+## 11. Inventory Ledger System
+
+### 11.1 Architecture
+
+The inventory ledger is the central tracking system for all material movements. Every inventory change is recorded as a ledger entry with full traceability.
+
+```typescript
+// src/lib/inventory/inventory-ledger.ts
+class InventoryLedger {
+  // Record inventory transaction
+  async recordTransaction(params: {
+    type: InventoryTransactionType
+    materialId: string
+    quantity: number
+    fromLocation?: string
+    toLocation?: string
+    reference: string
+    notes?: string
+    performedBy: string
+    tenantId: string
+  }): Promise<InventoryLedgerEntry>
+
+  // Calculate current stock
+  async calculateStock(materialId: string, locationId?: string): Promise<number>
+
+  // Get transaction history
+  async getHistory(materialId: string, filters?: {
+    startDate?: Date
+    endDate?: Date
+    type?: InventoryTransactionType
+  }): Promise<InventoryLedgerEntry[]>
+}
+```
+
+### 11.2 Transaction Types
+
+| Type | Description | Trigger |
+|------|-------------|---------|
+| RECEIPT | Goods received | Warehouse receipt from PO |
+| ISSUE | Materials issued | Handoff to production |
+| CONSUMPTION | Materials consumed | Production output recorded |
+| PRODUCTION_OUTPUT | Finished goods created | Task completes |
+| TRANSFER | Location change | Move to PPIC rack |
+| QC_PASS | QC approved | QC inspection pass |
+| QC_FAIL | QC rejected | QC inspection fail |
+| SCRAP | Items scrapped | QC fail with scrap decision |
+| ADJUSTMENT | Manual correction | Inventory adjustment |
+
+### 11.3 Atomic Transactions
+
+All inventory updates use database transactions for consistency:
+
+```typescript
+await prisma.$transaction(async (tx) => {
+  // 1. Create ledger entry
+  const ledgerEntry = await tx.inventoryLedger.create({
+    data: { /* entry data */ }
+  })
+  
+  // 2. Update current quantity
+  await tx.inventory.update({
+    where: { id: materialId },
+    data: { 
+      currentQuantity: { 
+        [operation]: quantity  // increment or decrement
+      }
+    }
+  })
+  
+  // 3. Emit SSE event
+  await emitInventoryEvent(ledgerEntry)
+  
+  return ledgerEntry
+})
+```
+
+---
+
+## 12. Dependency System
+
+### 12.1 TaskDependency Model
+
+```prisma
+model TaskDependency {
+  id              String   @id @default(cuid())
+  tenantId        String
+  predecessorType String   // 'MO', 'Jobsheet', 'Task'
+  predecessorId   String
+  successorType   String
+  successorId     String
+  dependencyType  String   // 'FINISH_TO_START', 'START_TO_START', etc.
+  lagDays         Int      @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([predecessorId, successorId, dependencyType], name: "unique_dependency")
+  @@index([tenantId])
+  @@index([predecessorId])
+  @@index([successorId])
+}
+```
+
+### 12.2 Dependency API
+
+```
+GET    /api/dependencies           List dependencies
+POST   /api/dependencies           Create dependency
+DELETE /api/dependencies/[id]      Delete dependency
+```
+
+**Create Dependency Request:**
+```typescript
+{
+  predecessorType: 'Task' | 'Jobsheet' | 'MO'
+  predecessorId: string
+  successorType: 'Task' | 'Jobsheet' | 'MO'
+  successorId: string
+  dependencyType: 'FINISH_TO_START' | 'START_TO_START' | 
+                  'FINISH_TO_FINISH' | 'START_TO_FINISH'
+  lagDays?: number  // Default: 0
+}
+```
+
+**Validation:**
+- No circular dependencies allowed
+- Cannot create self-dependency
+- Duplicate detection (same predecessor + successor + type)
+
+### 12.3 Dependency Types
+
+| Type | Code | Scheduling Effect |
+|------|------|-------------------|
+| Finish-to-Start | FS | Successor ES = Predecessor EF + lag |
+| Start-to-Start | SS | Successor ES = Predecessor ES + lag |
+| Finish-to-Finish | FF | Successor EF = Predecessor EF + lag |
+| Start-to-Finish | SF | Successor EF = Predecessor ES + lag |
+
+---
+
+## 13. Execution Plan (CPM) System
+
+### 13.1 Critical Path Method
+
+The execution plan API calculates optimal task dates using CPM:
+
+```typescript
+// src/app/api/execution-plan/route.ts
+class ExecutionPlanService {
+  // Run CPM algorithm
+  async calculateSchedule(params: {
+    tenantId: string
+    orderId?: string
+    moId?: string
+  }): Promise<ExecutionPlan>
+
+  // CPM Algorithm
+  private cpmAlgorithm(tasks: Task[], dependencies: Dependency[]): void {
+    // Forward pass
+    for (const task of sortedByTopologicalOrder) {
+      task.earlyStart = max(predecessorEF) + lag
+      task.earlyFinish = task.earlyStart + duration
+    }
+    
+    // Backward pass
+    for (const task of reverseTopologicalOrder) {
+      task.lateFinish = min(successorLS) - lag
+      task.lateStart = task.lateFinish - duration
+      task.float = task.lateStart - task.earlyStart
+    }
+    
+    // Identify critical path
+    criticalPath = tasks.filter(t => t.float === 0)
+  }
+}
+```
+
+### 13.2 API Endpoint
+
+```
+POST /api/execution-plan
+{
+  tenantId: string
+  orderId?: string   // Schedule entire order
+  moId?: string      // Schedule single MO
+}
+
+Response:
+{
+  success: true
+  data: {
+    tasks: [{
+      id: string
+      name: string
+      plannedStartDate: Date
+      plannedEndDate: Date
+      earlyStart: Date
+      earlyFinish: Date
+      lateStart: Date
+      lateFinish: Date
+      float: number
+      isCritical: boolean
+    }]
+    criticalPath: string[]  // Task IDs on critical path
+    startDate: Date
+    endDate: Date
+  }
+}
+```
+
+### 13.3 MO-Level Dependencies
+
+When creating dependencies between MOs, the system:
+1. Finds the last task of the predecessor MO
+2. Finds the first task of the successor MO
+3. Creates a task-level dependency between them
+4. Applies lag days to the dependency
+
+```typescript
+async function createMODependency(params: {
+  predecessorMOId: string
+  successorMOId: string
+  dependencyType: string
+  lagDays: number
+}) {
+  const lastTask = await getLastTaskOfMO(params.predecessorMOId)
+  const firstTask = await getFirstTaskOfMO(params.successorMOId)
+  
+  return createTaskDependency({
+    predecessorId: lastTask.id,
+    successorId: firstTask.id,
+    dependencyType: params.dependencyType,
+    lagDays: params.lagDays
+  })
+}
+```
+
+---
+
+## 14. Handoff System
+
+### 14.1 Handoff Lifecycle
+
+```typescript
+enum HandoffStatus {
+  CREATED = 'CREATED',    // Initial state
+  MOVED = 'MOVED',        // Moved to PPIC rack
+  ISSUED = 'ISSUED',      // Issued to production
+  CONFIRMED = 'CONFIRMED', // Receipt confirmed
+  COMPLETED = 'COMPLETED', // Handoff complete
+  CANCELLED = 'CANCELLED'  // Handoff cancelled
+}
+```
+
+### 14.2 Handoff Actions
+
+```
+POST /api/handoffs
+{
+  action: 'create' | 'move_to_ppic' | 'issue_to_production' | 
+          'confirm_receipt' | 'cancel'
+  handoffId?: string
+  // Additional data based on action
+}
+```
+
+### 14.3 Duplicate Prevention
+
+The system prevents duplicate handoffs by checking:
+1. Same MO ID
+2. Same inventory items/materials
+3. Status is CREATED (not yet moved)
+4. Same action type
+
+```typescript
+async function checkDuplicateHandoff(params: {
+  moId?: string
+  inventoryItems: string[]
+  action: string
+}): Promise<boolean> {
+  const existing = await prisma.materialHandoff.findFirst({
+    where: {
+      moId: params.moId,
+      status: 'CREATED',
+      items: { some: { inventoryId: { in: params.inventoryItems } } }
+    }
+  })
+  return !!existing
+}
+```
+
+### 14.4 Inventory Updates on Handoff
+
+| Action | From Location | To Location | Ledger Type |
+|--------|---------------|-------------|-------------|
+| move_to_ppic | WAREHOUSE | PPIC_RACK | TRANSFER |
+| issue_to_production | PPIC_RACK | PRODUCTION_FLOOR | ISSUE |
+| confirm_receipt | - | - | - (no inventory change) |
+
+---
+
+## 15. Gantt Chart Implementation
+
+### 15.1 Data Structure
+
+```typescript
+interface GanttItem {
+  id: string              // Prefixed: 'task-xxx', 'mo-xxx'
+  rawId: string          // Database ID
+  name: string
+  startDate: Date
+  endDate: Date
+  status: string
+  progress: number       // 0-100
+  type: 'order' | 'MO' | 'jobsheet' | 'task'
+  children?: GanttItem[]
+  isCritical?: boolean
+  dependencies: {
+    id: string
+    type: string         // FS, SS, FF, SF
+    predecessorId: string
+    lagDays: number
+  }[]
+}
+```
+
+### 15.2 Dependency Arrow Rendering
+
+Arrows are drawn using SVG with DOM measurement:
+
+```typescript
+// useEffect to draw arrows after render
+useEffect(() => {
+  const timer = setTimeout(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    
+    // Get positions of predecessor and successor bars
+    const fromEl = document.getElementById(`bar-${dep.predecessorId}`)
+    const toEl = document.getElementById(`bar-${dep.successorId}`)
+    
+    // Draw curved path
+    const path = createCurvedPath(fromEl, toEl, dep.type)
+    svg.appendChild(path)
+  }, 150)  // Delay for DOM readiness
+  
+  return () => clearTimeout(timer)
+}, [dependencies, visibleTasks])
+```
+
+### 15.3 Critical Path Highlighting
+
+Tasks on the critical path are highlighted with:
+- Amber color (#f59e0b)
+- Ring outline (shadow/glow effect)
+- Higher z-index
+
+```typescript
+const barStyle = {
+  backgroundColor: isCritical ? '#f59e0b' : statusColor,
+  boxShadow: isCritical ? '0 0 0 2px #fbbf24' : 'none'
+}
+```
+
+---
+
+## 16. Order Wizard Dependencies Step
+
+### 16.1 Step 7: Dependencies
+
+The Order Wizard includes a new step for configuring dependencies:
+
+```typescript
+// Dependencies step state
+interface DependenciesStepState {
+  dependencies: {
+    localPredecessorId: string    // Local ID before DB creation
+    localSuccessorId: string
+    predecessorType: 'MO' | 'Jobsheet' | 'Task'
+    successorType: 'MO' | 'Jobsheet' | 'Task'
+    dependencyType: DependencyType
+    lagDays: number
+  }[]
+}
+```
+
+### 16.2 ID Mapping
+
+When submitting the wizard:
+1. Create MOs, jobsheets, and tasks first
+2. Build mapping: localId → databaseId
+3. Create dependencies using database IDs
+
+```typescript
+const idMapping: Record<string, string> = {}
+
+// Map local IDs to database IDs
+for (const localId in localToDbMapping) {
+  idMapping[localId] = localToDbMapping[localId]
+}
+
+// Create dependencies
+for (const dep of wizardState.dependencies) {
+  await createDependency({
+    predecessorId: idMapping[dep.localPredecessorId],
+    successorId: idMapping[dep.localSuccessorId],
+    dependencyType: dep.dependencyType,
+    lagDays: dep.lagDays
+  })
+}
+```
+
+### 16.3 Auto-Schedule on Submit
+
+After creating all dependencies, the system runs auto-schedule:
+
+```typescript
+// After dependency creation
+const executionPlan = await fetch('/api/execution-plan', {
+  method: 'POST',
+  body: JSON.stringify({ moId: createdMO.id })
+})
+
+// Update Gantt chart with new dates
+refreshGanttData()
+```
+
+---
+
 *ManuOS - Manufacturing Operating System*
+*Document Version 2.1 - May 2026*
+*Added: Inventory Ledger System, Dependency System, Execution Plan, Handoff System, Gantt Chart Implementation, Order Wizard Dependencies*
 *Technical Specification Document v2.0 - May 2026*

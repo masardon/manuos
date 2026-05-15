@@ -2,6 +2,26 @@
 
 Complete guide for operating ManuOS - Manufacturing Operating System.
 
+## Related Documentation
+
+For detailed documentation, see:
+
+| Document | Description |
+|----------|-------------|
+| [GUIDEBOOK.md](./GUIDEBOOK.md) | **Complete step-by-step guide** with detailed instructions |
+| [MATERIAL_FLOW.md](./MATERIAL_FLOW.md) | Material flow diagrams and handoff processes |
+| [USE_CASES.md](./USE_CASES.md) | Use cases for all ManuOS functionality |
+| [PRD.md](./PRD.md) | Product requirements document |
+| [TSD.md](./TSD.md) | Technical specification document |
+
+---
+
+## Quick Start
+
+For quick step-by-step instructions, see [GUIDEBOOK.md](./GUIDEBOOK.md).
+
+---
+
 ## Table of Contents
 
 1. [Getting Started](#getting-started)

@@ -90,7 +90,7 @@ export async function distributeMaterialsToJobsheet(input: DistributeToJobsheetI
   // Update jobsheet status
   await db.jobsheet.update({
     where: { id: jobsheetId },
-    data: { status: 'MATERIAL_ALLOCATED' }
+    data: { status: 'READY' }
   })
 
   return results
@@ -295,7 +295,28 @@ export async function getJobsheetMaterialsSummary(tenantId: string, jobsheetId: 
     }
   }
 
-  return { materials, summary }
+  // Flatten all task allocations with proper nesting
+  const taskAllocations = materials.flatMap(m => 
+    m.taskAllocations.map(ta => ({
+      ...ta,
+      materialName: m.name,
+      partNumber: m.partNumber,
+      jobsheetMaterial: {
+        id: m.id,
+        name: m.name,
+        partNumber: m.partNumber,
+        allocatedQty: m.allocatedQty,
+        materialRequirement: m.materialRequirement,
+      },
+    }))
+  )
+
+  return { 
+    materials, 
+    jobAllocations: materials,  // Alias for page compatibility
+    taskAllocations,            // Flattened task allocations
+    summary 
+  }
 }
 
 // ============================================
@@ -361,7 +382,7 @@ export async function autoDistributeMaterialsToJobsheets(
     // Update jobsheet status
     await db.jobsheet.update({
       where: { id: jobsheet.id },
-      data: { status: 'MATERIAL_ALLOCATED' }
+      data: { status: 'READY' }
     })
   }
 

@@ -103,16 +103,35 @@ export default function LocationsPage() {
 
   const fetchData = async () => {
     try {
-      const [locationsRes, shelvesRes] = await Promise.all([
-        fetch('/api/locations'),
-        fetch('/api/shelves'),
-      ])
-      const [locationsData, shelvesData] = await Promise.all([
-        locationsRes.json(),
-        shelvesRes.json(),
-      ])
+      const locationsRes = await fetch('/api/locations?includeShelves=true')
+      
+      if (!locationsRes.ok) {
+        throw new Error(`Failed to fetch locations: ${locationsRes.status}`)
+      }
+      
+      const locationsData = await locationsRes.json()
       setLocations(locationsData.locations || [])
-      setShelves(shelvesData.shelves || [])
+      
+      // Extract shelves from locations
+      const allShelves: Shelf[] = []
+      for (const location of locationsData.locations || []) {
+        if (location.shelves) {
+          for (const shelf of location.shelves) {
+            allShelves.push({
+              id: shelf.id,
+              code: shelf.code,
+              name: shelf.name,
+              rack: shelf.rack,
+              row: shelf.row,
+              column: shelf.column,
+              level: shelf.level,
+              capacity: shelf.capacity,
+              isActive: shelf.isActive,
+            })
+          }
+        }
+      }
+      setShelves(allShelves)
     } catch (error) {
       console.error('Error fetching data:', error)
       toast({
@@ -151,7 +170,7 @@ export default function LocationsPage() {
         body: JSON.stringify({
           ...locationForm,
           capacity: locationForm.capacity || undefined,
-          parentId: locationForm.parentId || undefined,
+          parentId: (locationForm.parentId && locationForm.parentId !== 'none') ? locationForm.parentId : undefined,
         }),
       })
 
@@ -186,10 +205,11 @@ export default function LocationsPage() {
 
   const handleCreateShelf = async () => {
     try {
-      const response = await fetch('/api/shelves', {
+      const response = await fetch('/api/locations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          action: 'create_shelf',
           ...shelfForm,
           capacity: shelfForm.capacity || undefined,
         }),
@@ -374,14 +394,14 @@ export default function LocationsPage() {
                         <div className="space-y-2">
                           <Label htmlFor="loc-parent">Parent Location</Label>
                           <Select
-                            value={locationForm.parentId}
-                            onValueChange={(value) => setLocationForm({ ...locationForm, parentId: value })}
+                          value={locationForm.parentId || 'none'}
+                          onValueChange={(value) => setLocationForm({ ...locationForm, parentId: value === 'none' ? '' : value })}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="None (root level)" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">None (root level)</SelectItem>
+                              <SelectItem value="none">None (root level)</SelectItem>
                               {locations
                                 .filter((l) => !l.parentId)
                                 .map((loc) => (

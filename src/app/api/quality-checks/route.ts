@@ -6,7 +6,7 @@ import {
   getDefectSummary,
 } from '@/lib/inventory/quality-control'
 
-const DEMO_TENANT_ID = 'demo-tenant'
+const DEMO_TENANT_ID = 'tenant_ypti'
 
 export async function GET(request: NextRequest) {
   try {

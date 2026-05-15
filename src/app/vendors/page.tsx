@@ -60,7 +60,7 @@ interface Vendor {
   onTimeDelivery: number
   totalOrders: number
   isActive: boolean
-  vendorOrders: { id: string; vendorOrderId: string; status: string; totalAmount: number }[]
+  vendorOrders: { id: string; vendorOrderId: string; status: string; totalPrice: number }[]
   outsourcedMfgOrders: { id: string; moNumber: string; status: string }[]
 }
 
@@ -162,7 +162,8 @@ export default function VendorManagementPage() {
       TIER_2: 'bg-orange-100 text-orange-800',
       TIER_3: 'bg-gray-100 text-gray-800',
     }
-    return <Badge className={config[tier]}>{tier}</Badge>
+    const displayText = tier.replace('TIER_', 'Tier ')
+    return <Badge className={config[tier]}>{displayText}</Badge>
   }
 
   const getStatusBadge = (status: string) => {
@@ -679,7 +680,7 @@ export default function VendorManagementPage() {
                           <span className="font-medium">{order.vendorOrderId}</span>
                           <div className="flex items-center gap-2">
                             {getStatusBadge(order.status)}
-                            <span className="text-sm">{formatCurrency(order.totalAmount)}</span>
+                            <span className="text-sm">{formatCurrency(order.totalPrice)}</span>
                           </div>
                         </div>
                       ))}

@@ -89,7 +89,7 @@ export async function POST(
       );
     }
 
-    if (inventory.currentQuantity < quantity) {
+    if (inventory.quantity < quantity) {
       return NextResponse.json(
         { error: 'Insufficient inventory quantity' },
         { status: 400 }
@@ -119,11 +119,10 @@ export async function POST(
         data: {
           tenantId: DEMO_TENANT_ID,
           jobsheetMaterialId: jobsheetMaterial.id,
-          inventoryId,
-          quantity,
-          allocatedBy: userId || 'system',
-          locationId,
-          shelfId,
+          taskId: body.taskId || jobsheetMaterial.jobsheetId, // Use taskId or fallback to jobsheetId
+          allocatedQty: quantity,
+          remainingQty: quantity,
+          unit: inventory.unit,
           status: 'ALLOCATED',
         },
       });
@@ -132,7 +131,7 @@ export async function POST(
       await tx.inventory.update({
         where: { id: inventoryId },
         data: {
-          currentQuantity: { decrement: quantity },
+          quantity: { decrement: quantity },
         },
       });
 
@@ -145,13 +144,10 @@ export async function POST(
           inventoryId,
           type: 'CONSUMPTION',
           quantity: -quantity, // Negative for consumption
-          fromLocationId: locationId,
-          fromShelfId: shelfId,
           referenceType: 'MATERIAL_ALLOCATION',
           referenceId: allocation.id,
           performedBy: userId || 'system',
           notes: `Allocated to jobsheet ${jobsheet.jsNumber}`,
-          handoffStatus: 'PENDING',
         },
       });
 
@@ -161,14 +157,14 @@ export async function POST(
           jobsheetMaterialId: jobsheetMaterial.id,
           status: 'ALLOCATED',
         },
-        _sum: { quantity: true },
+        _sum: { allocatedQty: true },
       });
 
       const reqMaterial = await tx.materialRequirement.findUnique({
         where: { id: materialRequirementId },
       });
 
-      if (totalAllocated._sum.quantity! >= (reqMaterial?.requiredQuantity || 0)) {
+      if ((totalAllocated._sum.allocatedQty || 0) >= (reqMaterial?.requiredQty || 0)) {
         await tx.jobsheetMaterial.update({
           where: { id: jobsheetMaterial.id },
           data: { status: 'FULLY_ALLOCATED' },
@@ -186,15 +182,15 @@ export async function POST(
           materialRequirementId,
         },
         include: {
-          allocations: true,
+          taskAllocations: true,
         },
       });
 
       const totalMoAllocated = moMaterials.reduce((sum, jm) => {
-        return sum + jm.allocations.reduce((aSum, alloc) => aSum + alloc.quantity, 0);
+        return sum + jm.taskAllocations.reduce((aSum: number, alloc: any) => aSum + alloc.allocatedQty, 0);
       }, 0);
 
-      if (totalMoAllocated >= (reqMaterial?.requiredQuantity || 0)) {
+      if (totalMoAllocated >= (reqMaterial?.requiredQty || 0)) {
         await tx.materialRequirement.update({
           where: { id: materialRequirementId },
           data: { status: 'ALLOCATED' },
@@ -214,8 +210,8 @@ export async function POST(
       inventoryEventEmitter.emitInventoryUpdate({
         inventoryId,
         partNumber: inventory.partNumber,
-        previousQuantity: inventory.currentQuantity + quantity,
-        newQuantity: inventory.currentQuantity,
+        previousQuantity: inventory.quantity + quantity,
+        newQuantity: inventory.quantity,
         changeType: 'ALLOCATION',
         referenceId: result.id,
         referenceType: 'MATERIAL_ALLOCATION',
@@ -266,17 +262,20 @@ export async function DELETE(
       );
     }
 
-    // Get allocation with inventory details
+    // Get allocation with jobsheet material details
     const allocation = await db.taskMaterialAllocation.findFirst({
       where: {
         id: allocationId,
         tenantId: DEMO_TENANT_ID,
       },
       include: {
-        inventory: true,
         jobsheetMaterial: {
           include: {
-            materialRequirement: true,
+            materialRequirement: {
+              include: {
+                inventory: true,
+              },
+            },
           },
         },
       },
@@ -289,13 +288,21 @@ export async function DELETE(
       );
     }
 
+    const inventory = allocation.jobsheetMaterial.materialRequirement?.inventory;
+    if (!inventory) {
+      return NextResponse.json(
+        { error: 'No inventory linked to this allocation' },
+        { status: 400 }
+      );
+    }
+
     // Use transaction to ensure data consistency
     await db.$transaction(async (tx) => {
       // Return quantity back to inventory
       await tx.inventory.update({
-        where: { id: allocation.inventoryId },
+        where: { id: inventory.id },
         data: {
-          currentQuantity: { increment: allocation.quantity },
+          quantity: { increment: allocation.allocatedQty },
         },
       });
 
@@ -305,16 +312,13 @@ export async function DELETE(
         data: {
           tenantId: DEMO_TENANT_ID,
           transactionNumber,
-          inventoryId: allocation.inventoryId,
+          inventoryId: inventory.id,
           type: 'RETURN',
-          quantity: allocation.quantity,
-          toLocationId: allocation.locationId,
-          toShelfId: allocation.shelfId,
+          quantity: allocation.allocatedQty,
           referenceType: 'ALLOCATION_CANCELLED',
           referenceId: allocationId,
           performedBy: userId || 'system',
           notes: 'Material allocation cancelled - returned to inventory',
-          handoffStatus: 'COMPLETED',
         },
       });
 
@@ -329,10 +333,10 @@ export async function DELETE(
           jobsheetMaterialId: allocation.jobsheetMaterialId,
           status: 'ALLOCATED',
         },
-        _sum: { quantity: true },
+        _sum: { allocatedQty: true },
       });
 
-      const newStatus = remainingAllocations._sum.quantity! > 0 
+      const newStatus = (remainingAllocations._sum.allocatedQty || 0) > 0 
         ? 'PARTIALLY_ALLOCATED' 
         : 'PENDING';
 
@@ -344,43 +348,43 @@ export async function DELETE(
       // Update material requirement status
       const moMaterials = await tx.jobsheetMaterial.findMany({
         where: {
-          materialRequirementId: allocation.jobsheetMaterialId,
+          materialRequirementId: allocation.jobsheetMaterial.materialRequirementId,
         },
         include: {
-          allocations: true,
+          taskAllocations: true,
         },
       });
 
       const totalMoAllocated = moMaterials.reduce((sum, jm) => {
-        return sum + jm.allocations.reduce((aSum, alloc) => aSum + alloc.quantity, 0);
+        return sum + jm.taskAllocations.reduce((aSum: number, alloc: any) => aSum + alloc.allocatedQty, 0);
       }, 0);
 
       const reqMaterial = allocation.jobsheetMaterial.materialRequirement;
       let reqStatus = 'PENDING';
-      if (totalMoAllocated >= reqMaterial.requiredQuantity) {
+      if (totalMoAllocated >= (reqMaterial?.requiredQty || 0)) {
         reqStatus = 'ALLOCATED';
       } else if (totalMoAllocated > 0) {
         reqStatus = 'PARTIALLY_ALLOCATED';
       }
 
       await tx.materialRequirement.update({
-        where: { id: reqMaterial.id },
+        where: { id: reqMaterial!.id },
         data: { status: reqStatus },
       });
     });
 
-    // Get inventory details for event emission
-    const inventory = await db.inventory.findUnique({
-      where: { id: allocation.inventoryId }
+    // Get updated inventory for event emission
+    const updatedInventory = await db.inventory.findUnique({
+      where: { id: inventory.id }
     });
 
     // Emit inventory update event (material returned to inventory)
-    if (inventory) {
+    if (updatedInventory) {
       inventoryEventEmitter.emitInventoryUpdate({
-        inventoryId: allocation.inventoryId,
+        inventoryId: inventory.id,
         partNumber: inventory.partNumber,
-        previousQuantity: inventory.currentQuantity - allocation.quantity,
-        newQuantity: inventory.currentQuantity,
+        previousQuantity: inventory.quantity - allocation.allocatedQty,
+        newQuantity: updatedInventory.quantity,
         changeType: 'RETURN',
         referenceId: allocationId,
         referenceType: 'ALLOCATION_CANCELLED',
@@ -392,9 +396,9 @@ export async function DELETE(
       inventoryEventEmitter.emitAllocationUpdate({
         allocationId,
         jobsheetMaterialId: allocation.jobsheetMaterialId,
-        inventoryId: allocation.inventoryId,
+        inventoryId: inventory.id,
         partNumber: inventory.partNumber,
-        quantity: allocation.quantity,
+        quantity: allocation.allocatedQty,
         status: 'CANCELLED',
         tenantId: DEMO_TENANT_ID,
         action: 'DELETE'

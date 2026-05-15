@@ -119,6 +119,17 @@ export async function createMaterialHandoff(
     throw new Error('Invalid location IDs')
   }
   
+  // Validate inventory items exist
+  for (const item of data.items) {
+    const inventoryItem = await db.inventory.findUnique({ 
+      where: { id: item.inventoryId },
+      select: { id: true, partNumber: true, name: true }
+    })
+    if (!inventoryItem) {
+      throw new Error(`Inventory item not found: ${item.inventoryId}`)
+    }
+  }
+
   // Create handoff with items in transaction
   const result = await db.$transaction(async (tx) => {
     // Create handoff
@@ -146,6 +157,12 @@ export async function createMaterialHandoff(
     
     // Create handoff items and update inventory locations
     for (const item of data.items) {
+      // Fetch inventory once to get partNumber and name
+      const inventoryItem = await tx.inventory.findUnique({ 
+        where: { id: item.inventoryId },
+        select: { partNumber: true, name: true }
+      })
+      
       // Create handoff item
       await tx.materialHandoffItem.create({
         data: {
@@ -153,8 +170,8 @@ export async function createMaterialHandoff(
           handoffId: handoff.id,
           inventoryId: item.inventoryId,
           materialRequirementId: item.materialRequirementId,
-          partNumber: (await tx.inventory.findUnique({ where: { id: item.inventoryId } }))?.partNumber || '',
-          name: (await tx.inventory.findUnique({ where: { id: item.inventoryId } }))?.name || '',
+          partNumber: inventoryItem?.partNumber || '',
+          name: inventoryItem?.name || '',
           quantity: item.quantity,
           unit: item.unit,
           fromBatch: item.fromBatch,
@@ -165,23 +182,40 @@ export async function createMaterialHandoff(
         }
       })
       
-      // Update inventory location using ledger service
-      await recordInventoryMovement({
-        tenantId,
-        inventoryId: item.inventoryId,
-        type: 'TRANSFER',
-        quantity: 0, // No quantity change, just location
-        referenceType: 'HANDOFF',
-        referenceId: handoff.id,
-        fromLocationId: data.fromLocationId,
-        toLocationId: data.toLocationId,
-        performedBy: data.handedBy,
-        notes: `Handoff: ${handoffNumber}`,
+      // Update inventory location directly (avoid nested transaction)
+      await tx.inventory.update({
+        where: { id: item.inventoryId },
+        data: {
+          locationId: data.toLocationId,
+          shelfId: item.toShelf || null,
+        }
       })
     }
     
     return handoff
   })
+  
+  // Record inventory movements outside the main transaction (non-critical)
+  // This is done after the handoff is created to avoid transaction timeout
+  for (const item of data.items) {
+    try {
+      await recordInventoryMovement({
+        tenantId,
+        inventoryId: item.inventoryId,
+        type: 'TRANSFER',
+        quantity: 0,
+        referenceType: 'HANDOFF',
+        referenceId: result.id,
+        fromLocationId: data.fromLocationId,
+        toLocationId: data.toLocationId,
+        performedBy: data.handedBy,
+        notes: `Handoff: ${handoffNumber}`,
+      })
+    } catch (e) {
+      console.error('Failed to record inventory movement:', e)
+      // Don't throw - handoff was already created
+    }
+  }
   
   return result
 }
@@ -280,6 +314,24 @@ export async function issueToProduction(
   
   if (!warehouse || !productionLocation) {
     throw new Error('Warehouse or Production location not found')
+  }
+  
+  // Check if there's already a confirmed handoff for this MO
+  if (moId) {
+    const existingHandoff = await db.materialHandoff.findFirst({
+      where: {
+        tenantId,
+        moId,
+        fromLocationId: warehouse.id,
+        toLocationId: productionLocation.id,
+        status: 'CONFIRMED',
+        handoffType: 'ISSUE_TO_PRODUCTION',
+      }
+    })
+    
+    if (existingHandoff) {
+      return existingHandoff // Return existing handoff instead of creating duplicate
+    }
   }
   
   // Create handoff
@@ -507,7 +559,7 @@ export async function initializeDefaultLocations(
  */
 export async function moveToPPICRack(
   tenantId: string,
-  moId: string,
+  moId: string | undefined,
   items: Array<{
     inventoryId: string
     quantity: number
@@ -527,14 +579,46 @@ export async function moveToPPICRack(
     throw new Error('Default locations not found. Run initializeDefaultLocations first.')
   }
   
+  // Check if there's already a pending handoff for this MO from WH-01 to PPIC-01
+  // Use moId if available, otherwise check by inventory items
+  const whereClause: any = {
+    tenantId,
+    fromLocationId: warehouse.id,
+    toLocationId: ppicRack.id,
+    status: 'PENDING',
+    handoffType: 'MATERIAL_REQUEST',
+  }
+  
+  if (moId) {
+    whereClause.moId = moId
+  }
+  
+  const existingHandoff = await db.materialHandoff.findFirst({
+    where: whereClause,
+    include: {
+      items: true
+    }
+  })
+  
+  if (existingHandoff) {
+    // Check if the items are the same
+    const existingItemIds = existingHandoff.items.map(i => i.inventoryId).sort()
+    const newItemIds = items.map(i => i.inventoryId).sort()
+    
+    if (JSON.stringify(existingItemIds) === JSON.stringify(newItemIds)) {
+      console.log('Returning existing handoff:', existingHandoff.handoffNumber)
+      return existingHandoff // Return existing handoff instead of creating duplicate
+    }
+  }
+  
   return createMaterialHandoff(tenantId, {
     fromLocationId: warehouse.id,
     toLocationId: ppicRack.id,
     handedBy: movedBy,
     handoffType: 'MATERIAL_REQUEST',
     referenceType: 'MO',
-    referenceId: moId,
-    moId,
+    referenceId: moId || '',
+    moId: moId || '',
     notes: `Materials moved to PPIC Rack for MO preparation`,
     items: items.map(item => ({
       inventoryId: item.inventoryId,

@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/locations - Create location or initialize defaults
+// POST /api/locations - Create location, shelf, or initialize defaults
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request)
@@ -110,6 +110,17 @@ export async function POST(request: NextRequest) {
         locations,
         message: 'Default locations initialized successfully'
       })
+    }
+    
+    // Check if it's a shelf creation request
+    if (body.action === 'create_shelf' || body.locationId) {
+      const data = createShelfSchema.parse(body)
+      const shelf = await createShelf(user.tenantId, data, user.id)
+      return NextResponse.json({
+        success: true,
+        shelf,
+        message: 'Shelf created successfully'
+      }, { status: 201 })
     }
     
     // Otherwise create a single location

@@ -42,11 +42,11 @@ interface PurchaseRequest {
   description?: string
   status: string
   priority: string
-  totalAmount: number
+  estimatedAmount: number
   currency: string
   supplier?: string
-  requestedByUser?: { name: string; email: string }
-  approvedByUser?: { name: string; email: string }
+  preparedBy?: string
+  approvedBy?: string
   createdAt: string
   updatedAt: string
   items: PurchaseRequestItem[]
@@ -55,13 +55,15 @@ interface PurchaseRequest {
 interface PurchaseRequestItem {
   id: string
   materialId?: string
-  materialName: string
+  name: string
   partNumber?: string
-  description?: string
   quantity: number
-  unit: string
   unitPrice: number
   totalPrice: number
+  unit?: string
+  status: string
+  receivedQty: number
+  notes?: string
 }
 
 export default function PurchaseRequestsPage() {
@@ -139,7 +141,7 @@ export default function PurchaseRequestsPage() {
           supplier: formData.supplier,
           items: [
             {
-              materialName: formData.materialName,
+              name: formData.materialName,
               partNumber: formData.partNumber,
               description: formData.description,
               quantity: formData.quantity,
@@ -446,7 +448,7 @@ export default function PurchaseRequestsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {formatCurrency(purchaseRequests.reduce((sum, pr) => sum + pr.totalAmount, 0))}
+                {formatCurrency(purchaseRequests.reduce((sum, pr) => sum + pr.estimatedAmount, 0))}
               </div>
             </CardContent>
           </Card>
@@ -485,8 +487,8 @@ export default function PurchaseRequestsPage() {
                       <TableCell>{pr.title}</TableCell>
                       <TableCell>{getStatusBadge(pr.status)}</TableCell>
                       <TableCell>{getPriorityBadge(pr.priority)}</TableCell>
-                      <TableCell>{formatCurrency(pr.totalAmount)}</TableCell>
-                      <TableCell>{pr.requestedByUser?.name || '-'}</TableCell>
+                      <TableCell>{formatCurrency(pr.estimatedAmount)}</TableCell>
+                      <TableCell>{pr.preparedBy || '-'}</TableCell>
                       <TableCell>{formatDate(pr.createdAt)}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">
@@ -538,7 +540,7 @@ export default function PurchaseRequestsPage() {
         </Card>
 
         <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-          <DialogContent className="max-w-3xl">
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Purchase Request Details</DialogTitle>
               <DialogDescription>
@@ -546,7 +548,7 @@ export default function PurchaseRequestsPage() {
               </DialogDescription>
             </DialogHeader>
             {selectedPR && (
-              <div className="space-y-4">
+              <div className="space-y-4 overflow-hidden">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm font-medium">Status</p>
@@ -558,7 +560,7 @@ export default function PurchaseRequestsPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium">Requested By</p>
-                    <p>{selectedPR.requestedByUser?.name || '-'}</p>
+                    <p className="break-words">{selectedPR.preparedBy || '-'}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium">Date</p>
@@ -567,30 +569,30 @@ export default function PurchaseRequestsPage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium mb-2">Description</p>
-                  <p className="text-sm text-muted-foreground">{selectedPR.description || 'No description provided'}</p>
+                  <p className="text-sm text-muted-foreground break-words">{selectedPR.description || 'No description provided'}</p>
                 </div>
-                <div>
+                <div className="overflow-x-auto">
                   <p className="text-sm font-medium mb-2">Items</p>
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Material</TableHead>
-                        <TableHead>Part Number</TableHead>
-                        <TableHead>Quantity</TableHead>
-                        <TableHead>Unit Price</TableHead>
-                        <TableHead>Total</TableHead>
+                        <TableHead className="w-[150px]">Material</TableHead>
+                        <TableHead className="w-[100px]">Part Number</TableHead>
+                        <TableHead className="w-[100px]">Quantity</TableHead>
+                        <TableHead className="w-[120px]">Unit Price</TableHead>
+                        <TableHead className="w-[120px]">Total</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {selectedPR.items.map((item) => (
                         <TableRow key={item.id}>
-                          <TableCell>{item.materialName}</TableCell>
-                          <TableCell>{item.partNumber || '-'}</TableCell>
+                          <TableCell className="truncate max-w-[150px]">{item.name}</TableCell>
+                          <TableCell className="truncate">{item.partNumber || '-'}</TableCell>
                           <TableCell>
                             {item.quantity} {item.unit}
                           </TableCell>
                           <TableCell>{formatCurrency(item.unitPrice)}</TableCell>
-                          <TableCell>{formatCurrency(item.totalPrice)}</TableCell>
+                          <TableCell className="font-medium">{formatCurrency(item.totalPrice)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -599,12 +601,12 @@ export default function PurchaseRequestsPage() {
                 <div className="flex justify-between items-center border-t pt-4">
                   <div>
                     <p className="text-sm font-medium">Total Amount</p>
-                    <p className="text-lg font-bold">{formatCurrency(selectedPR.totalAmount)}</p>
+                    <p className="text-lg font-bold">{formatCurrency(selectedPR.estimatedAmount)}</p>
                   </div>
-                  {selectedPR.approvedByUser && (
+                  {selectedPR.approvedBy && (
                     <div>
-                      <p className="text-sm font-medium">Approved By</p>
-                      <p className="text-sm">{selectedPR.approvedByUser.name}</p>
+                      <p className="text-xs text-muted-foreground">Approved By</p>
+                      <p className="text-sm break-words">{selectedPR.approvedBy}</p>
                     </div>
                   )}
                 </div>

@@ -149,11 +149,11 @@ async function getAvailableStock(tenantId: string, partNumber: string): Promise<
       status: 'AVAILABLE',
     },
     _sum: {
-      availableQty: true,
+      quantity: true,
     },
   })
 
-  return inventory._sum.availableQty || 0
+  return inventory._sum.quantity || 0
 }
 
 /**
@@ -232,7 +232,7 @@ export async function autoReserveFromStock(
         tenantId,
         partNumber: req.partNumber,
         status: 'AVAILABLE',
-        availableQty: { gt: 0 },
+        quantity: { gt: 0 },
       },
       orderBy: { receivedAt: 'asc' },
     })
@@ -242,7 +242,7 @@ export async function autoReserveFromStock(
     for (const inv of availableInventory) {
       if (remainingToReserve <= 0) break
 
-      const qtyToReserve = Math.min(inv.availableQty, remainingToReserve)
+      const qtyToReserve = Math.min(inv.quantity, remainingToReserve)
 
       // Create reservation using inventory ledger service
       await reserveInventoryForMO({

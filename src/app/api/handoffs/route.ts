@@ -46,20 +46,20 @@ const confirmReceiptSchema = z.object({
 
 const issueToProductionSchema = z.object({
   moId: z.string().min(1),
-  toWorkstationId: z.string().optional(),
+  toWorkstationId: z.string().nullable().optional(),
   items: z.array(z.object({
     inventoryId: z.string().min(1),
     quantity: z.number().min(0.01),
-    materialRequirementId: z.string().optional(),
+    materialRequirementId: z.string().nullable().optional(),
   })).min(1),
 })
 
 const moveToPPICSchema = z.object({
-  moId: z.string().min(1),
+  moId: z.string().optional().transform(val => val || undefined),
   items: z.array(z.object({
     inventoryId: z.string().min(1),
     quantity: z.number().min(0.01),
-    materialRequirementId: z.string().optional(),
+    materialRequirementId: z.string().nullable().optional(),
   })).min(1),
 })
 
@@ -169,6 +169,24 @@ export async function POST(request: NextRequest) {
         success: true,
         handoff,
         message: 'Materials moved to PPIC Rack'
+      })
+    }
+
+    if (body.action === 'confirm_receipt') {
+      const handoffId = body.handoffId
+      if (!handoffId) {
+        return NextResponse.json({ error: 'handoffId is required' }, { status: 400 })
+      }
+      const handoff = await confirmHandoffReceipt(
+        user.tenantId,
+        handoffId,
+        user.id,
+        body.notes
+      )
+      return NextResponse.json({
+        success: true,
+        handoff,
+        message: 'Handoff confirmed successfully'
       })
     }
     

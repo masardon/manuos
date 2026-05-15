@@ -34,7 +34,7 @@ import {
 
 interface InventoryDashboardData {
   totalItems: number
-  lowStockItems: { partNumber: string; name: string; currentQuantity: number; minimumQuantity: number }[]
+  lowStockItems: { partNumber: string; name: string; quantity: number; reorderPoint: number | null }[]
   outOfStockItems: number
   totalQuantity: number
   recentTransactions: {
@@ -46,12 +46,14 @@ interface InventoryDashboardData {
     notes: string | null
     createdAt: string
   }[]
-  byCategory: { category: string; count: number; totalQuantity: number }[]
-  byLocation: { locationId: string; count: number; totalQuantity: number }[]
+  byCategory: { category: string | null; _count: number; _sum: { quantity: number | null } }[]
+  byLocation: { locationId: string | null; _count: number; _sum: { quantity: number | null } }[]
   pendingHandoffs: number
   activeReservations: {
     id: string
-    reservedQty: number
+    partNumber: string
+    quantity: number
+    status: string
     inventory: { partNumber: string; name: string }
     mo: { moNumber: string; name: string }
   }[]
@@ -219,7 +221,7 @@ export default function InventoryDashboardPage() {
                         <div className="text-right">
                           <div className="font-medium">{cat._count} items</div>
                           <div className="text-xs text-muted-foreground">
-                            {cat._sum?.currentQuantity?.toLocaleString() || 0} units
+                            {cat._sum?.quantity?.toLocaleString() || 0} units
                           </div>
                         </div>
                       </div>
@@ -250,7 +252,7 @@ export default function InventoryDashboardPage() {
                         <div className="text-right">
                           <div className="font-medium">{loc._count} items</div>
                           <div className="text-xs text-muted-foreground">
-                            {loc._sum?.currentQuantity?.toLocaleString() || 0} units
+                            {loc._sum?.quantity?.toLocaleString() || 0} units
                           </div>
                         </div>
                       </div>
@@ -393,10 +395,10 @@ export default function InventoryDashboardPage() {
                       <TableRow key={item.partNumber}>
                         <TableCell className="font-medium">{item.partNumber}</TableCell>
                         <TableCell>{item.name}</TableCell>
-                        <TableCell className="text-right">{item.currentQuantity}</TableCell>
-                        <TableCell className="text-right">{item.minimumQuantity}</TableCell>
+                        <TableCell className="text-right">{item.quantity}</TableCell>
+                        <TableCell className="text-right">{item.reorderPoint || 0}</TableCell>
                         <TableCell className="text-right text-red-600">
-                          {item.minimumQuantity - item.currentQuantity}
+                          {(item.reorderPoint || 0) - item.quantity}
                         </TableCell>
                         <TableCell>
                           <Badge className="bg-amber-100 text-amber-800">

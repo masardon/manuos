@@ -531,8 +531,8 @@ export default function MaterialAllocationPage() {
                         </CardHeader>
                         <CardContent>
                           <div className="text-sm text-muted-foreground">
-                            {js.tasks.length} tasks
-                            {js.tasks.length > 0 && (
+                            {js.tasks?.length || 0} tasks
+                            {js.tasks?.length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-2">
                                 {js.tasks.map((task) => (
                                   <Badge key={task.id} variant="secondary" className="text-xs">

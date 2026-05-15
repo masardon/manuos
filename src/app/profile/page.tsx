@@ -67,22 +67,27 @@ export default function ProfilePage() {
     try {
       setLoading(true)
       // Using a demo user ID - in production, this would come from auth
-      const userId = 'demo-user-id'
+      const userId = 'user-admin'
       const response = await fetch(`/api/usersettings?userId=${userId}`)
       const data = await response.json()
+      
+      if (!data.settings) {
+        throw new Error('No settings returned from API')
+      }
+      
       setSettings(data.settings)
       setFormData({
-        theme: data.settings.theme,
-        language: data.settings.language,
-        timezone: data.settings.timezone,
-        emailNotifications: data.settings.emailNotifications,
-        taskReminders: data.settings.taskReminders,
-        breakdownAlerts: data.settings.breakdownAlerts,
-        inventoryAlerts: data.settings.inventoryAlerts,
-        defaultView: data.settings.defaultView,
-        showInactiveMachines: data.settings.showInactiveMachines,
-        showCompletedTasks: data.settings.showCompletedTasks,
-        rowsPerPage: data.settings.rowsPerPage,
+        theme: data.settings.theme || 'system',
+        language: data.settings.language || 'en',
+        timezone: data.settings.timezone || 'UTC',
+        emailNotifications: data.settings.emailNotifications ?? true,
+        taskReminders: data.settings.taskReminders ?? true,
+        breakdownAlerts: data.settings.breakdownAlerts ?? true,
+        inventoryAlerts: data.settings.inventoryAlerts ?? true,
+        defaultView: data.settings.defaultView || 'dashboard',
+        showInactiveMachines: data.settings.showInactiveMachines ?? false,
+        showCompletedTasks: data.settings.showCompletedTasks ?? false,
+        rowsPerPage: data.settings.rowsPerPage || 10,
       })
     } catch (error) {
       console.error('Error fetching user settings:', error)
@@ -128,7 +133,7 @@ export default function ProfilePage() {
     setSaving(true)
 
     try {
-      const userId = 'demo-user-id' // In production, this would come from auth
+      const userId = 'user-admin' // In production, this would come from auth
       const response = await fetch('/api/usersettings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

@@ -1,4 +1,5 @@
-Continue  opencode -s ses_1de7e6477ffeXRgMumfOgJf8BR
+Continue  opencode -s ses_1de7e6477ffeXRgMumfOgJf8BR | npx prisma generate && npx prisma db push && npx tsx prisma/seed.ts && next build
+
 # 🏭 ManuOS - Manufacturing Operating System
 
 A modern, production-ready manufacturing management system built with cutting-edge web technologies. ManuOS provides complete production planning, scheduling, and execution capabilities for modern manufacturing operations.
